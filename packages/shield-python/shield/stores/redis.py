@@ -1,5 +1,5 @@
 """
-Shield Redis Rate Limit Store
+Arcis Redis Rate Limit Store
 ==============================
 
 Distributed rate limiting using Redis as the backing store.
@@ -17,14 +17,14 @@ Usage (sync — Flask, Django):
 Usage (async — FastAPI):
     import redis.asyncio as redis
     from shield.stores.redis import AsyncRedisRateLimitStore
-    from shield.fastapi import ShieldMiddleware
+    from shield.fastapi import ArcisMiddleware
 
     redis_client = redis.Redis(host='localhost', port=6379)
     store = AsyncRedisRateLimitStore(redis_client)
-    app.add_middleware(ShieldMiddleware, store=store)
+    app.add_middleware(ArcisMiddleware, store=store)
 
 Requires:
-    pip install shield-security[redis]
+    pip install arcis[redis]
     # or: pip install redis
 """
 
@@ -37,7 +37,7 @@ from typing import Optional, Dict, Any
 class RedisStoreOptions:
     """Configuration options for the Redis rate limit store."""
 
-    key_prefix: str = "shield:ratelimit:"
+    key_prefix: str = "arcis:ratelimit:"
     """Prefix applied to all Redis keys."""
 
     window_ms: int = 60000
@@ -136,7 +136,7 @@ class RedisRateLimitStore:
 
             return {"count": int(count), "reset_time": reset_time}
         except Exception as e:
-            print(f"[Shield RedisStore] get error: {e}")
+            print(f"[Arcis RedisStore] get error: {e}")
             return None
 
     def set(self, key: str, count: int, reset_time: float) -> None:
@@ -152,7 +152,7 @@ class RedisRateLimitStore:
             pipe.pexpire(full_key, ttl_ms)
             pipe.execute()
         except Exception as e:
-            print(f"[Shield RedisStore] set error: {e}")
+            print(f"[Arcis RedisStore] set error: {e}")
 
     def increment(self, key: str) -> int:
         if self._closed:
@@ -167,7 +167,7 @@ class RedisRateLimitStore:
                 return int(result[0])
             return self._redis.hincrby(self._key(key), "count", 1)
         except Exception as e:
-            print(f"[Shield RedisStore] increment error: {e}")
+            print(f"[Arcis RedisStore] increment error: {e}")
             return 1  # fail open
 
     def cleanup(self) -> None:
@@ -242,7 +242,7 @@ class AsyncRedisRateLimitStore:
 
             return {"count": int(count), "reset_time": reset_time}
         except Exception as e:
-            print(f"[Shield AsyncRedisStore] get error: {e}")
+            print(f"[Arcis AsyncRedisStore] get error: {e}")
             return None
 
     async def set(self, key: str, count: int, reset_time: float) -> None:
@@ -258,7 +258,7 @@ class AsyncRedisRateLimitStore:
             pipe.pexpire(full_key, ttl_ms)
             await pipe.execute()
         except Exception as e:
-            print(f"[Shield AsyncRedisStore] set error: {e}")
+            print(f"[Arcis AsyncRedisStore] set error: {e}")
 
     async def increment(self, key: str) -> int:
         if self._closed:
@@ -273,7 +273,7 @@ class AsyncRedisRateLimitStore:
                 return int(result[0])
             return await self._redis.hincrby(self._key(key), "count", 1)
         except Exception as e:
-            print(f"[Shield AsyncRedisStore] increment error: {e}")
+            print(f"[Arcis AsyncRedisStore] increment error: {e}")
             return 1  # fail open
 
     async def cleanup(self) -> None:

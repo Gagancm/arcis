@@ -1,5 +1,5 @@
 """
-Shield FastAPI Integration
+Arcis FastAPI Integration
 
 Includes both sync and async rate limiters for FastAPI applications.
 """
@@ -205,7 +205,7 @@ class AsyncRateLimiter:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    print(f"[Shield Async Rate Limiter] Cleanup error: {e}")
+                    print(f"[Arcis Async Rate Limiter] Cleanup error: {e}")
         
         self._cleanup_task = asyncio.create_task(cleanup_loop())
     
@@ -287,25 +287,25 @@ class AsyncRateLimiter:
 
 
 # ============================================================================
-# SHIELD MIDDLEWARE (UPDATED WITH ASYNC SUPPORT)
+# ARCIS MIDDLEWARE (UPDATED WITH ASYNC SUPPORT)
 # ============================================================================
 
-class ShieldMiddleware(BaseHTTPMiddleware):
+class ArcisMiddleware(BaseHTTPMiddleware):
     """
-    FastAPI/Starlette middleware for Shield security.
+    FastAPI/Starlette middleware for Arcis security.
     
     Now supports both sync and async rate limiters.
     
     Usage:
         from fastapi import FastAPI
-        from shield.fastapi import ShieldMiddleware
+        from shield.fastapi import ArcisMiddleware
         
         app = FastAPI()
-        app.add_middleware(ShieldMiddleware)
+        app.add_middleware(ArcisMiddleware)
         
         # With async rate limiter (default for new installations):
         app.add_middleware(
-            ShieldMiddleware,
+            ArcisMiddleware,
             use_async_rate_limiter=True,
             rate_limit_max=100,
         )
@@ -318,7 +318,7 @@ class ShieldMiddleware(BaseHTTPMiddleware):
         async_store = AsyncRedisRateLimitStore(redis_client)
         
         app.add_middleware(
-            ShieldMiddleware,
+            ArcisMiddleware,
             async_rate_limiter=AsyncRateLimiter(store=async_store),
         )
     """

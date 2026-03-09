@@ -1,30 +1,30 @@
 /*
-Package gin provides Shield middleware adapters for the Gin web framework.
+Package gin provides Arcis middleware adapters for the Gin web framework.
 
 Usage:
 
 	import (
 		"github.com/gin-gonic/gin"
-		shieldgin "github.com/aspect.dev/shield-go/gin"
+		arcisgin "github.com/GagancM/arcis/gin"
 	)
 
 	func main() {
 		r := gin.Default()
 
 		// Full protection with defaults
-		r.Use(shieldgin.Middleware())
+		r.Use(arcisgin.Middleware())
 
 		// Or with custom config
-		r.Use(shieldgin.MiddlewareWithConfig(shieldgin.Config{
+		r.Use(arcisgin.MiddlewareWithConfig(arcisgin.Config{
 			RateLimitMax:    50,
 			RateLimitWindow: time.Minute,
 			CSP:             "default-src 'self'",
 		}))
 
 		// Granular middleware
-		r.Use(shieldgin.Headers())
-		r.Use(shieldgin.RateLimit(100, time.Minute))
-		r.Use(shieldgin.Sanitizer())
+		r.Use(arcisgin.Headers())
+		r.Use(arcisgin.RateLimit(100, time.Minute))
+		r.Use(arcisgin.Sanitizer())
 
 		r.GET("/", handler)
 		r.Run(":8080")
@@ -32,19 +32,19 @@ Usage:
 
 # Resource Cleanup
 
-Shield's rate limiter runs a background goroutine for cleanup. Call Cleanup()
+Arcis's rate limiter runs a background goroutine for cleanup. Call Cleanup()
 when your application shuts down to stop this goroutine and release resources:
 
 	import (
 		"context"
 		"os/signal"
 		"syscall"
-		shieldgin "github.com/aspect.dev/shield-go/gin"
+		arcisgin "github.com/GagancM/arcis/gin"
 	)
 
 	func main() {
 		r := gin.Default()
-		r.Use(shieldgin.Middleware())
+		r.Use(arcisgin.Middleware())
 
 		// Graceful shutdown
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -53,13 +53,13 @@ when your application shuts down to stop this goroutine and release resources:
 		go r.Run(":8080")
 
 		<-ctx.Done()
-		shieldgin.Cleanup() // Stop rate limiter background goroutines
+		arcisgin.Cleanup() // Stop rate limiter background goroutines
 	}
 
 Alternatively, register cleanup with a defer or shutdown hook:
 
 	func main() {
-		defer shieldgin.Cleanup()
+		defer arcisgin.Cleanup()
 		// ... rest of setup
 	}
 */
@@ -72,10 +72,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	shield "github.com/aspect.dev/shield-go"
+	arcis "github.com/GagancM/arcis"
 )
 
-// Config holds Shield middleware configuration for Gin.
+// Config holds Arcis middleware configuration for Gin.
 type Config struct {
 	// Sanitizer options
 	Sanitize      bool
@@ -91,7 +91,7 @@ type Config struct {
 	RateLimitMax    int
 	RateLimitWindow time.Duration
 	RateLimitSkip   func(*gin.Context) bool
-	RateLimitStore  shield.RateLimitStore // Optional external store (e.g. Redis)
+	RateLimitStore  arcis.RateLimitStore // Optional external store (e.g. Redis)
 
 	// Security headers options
 	Headers           bool
@@ -108,7 +108,7 @@ type Config struct {
 	IsDev bool
 }
 
-// DefaultConfig returns the default Shield configuration for Gin.
+// DefaultConfig returns the default Arcis configuration for Gin.
 func DefaultConfig() Config {
 	return Config{
 		Sanitize:          true,
@@ -133,23 +133,23 @@ func DefaultConfig() Config {
 	}
 }
 
-// shieldInstance holds the Shield components for cleanup.
-type shieldInstance struct {
-	rateLimiter *shield.RateLimiter
+// arcisInstance holds the Arcis components for cleanup.
+type arcisInstance struct {
+	rateLimiter *arcis.RateLimiter
 }
 
-// Close cleans up Shield resources, stopping the rate limiter's
+// Close cleans up Arcis resources, stopping the rate limiter's
 // background cleanup goroutine.
-func (s *shieldInstance) Close() {
+func (s *arcisInstance) Close() {
 	if s.rateLimiter != nil {
 		s.rateLimiter.Close()
 	}
 }
 
-// activeInstances tracks Shield instances for cleanup.
-var activeInstances []*shieldInstance
+// activeInstances tracks Arcis instances for cleanup.
+var activeInstances []*arcisInstance
 
-// Cleanup closes all active Shield middleware instances and releases resources.
+// Cleanup closes all active Arcis middleware instances and releases resources.
 // This stops the background goroutines used by rate limiters for automatic
 // cleanup of expired entries.
 //
@@ -160,9 +160,9 @@ var activeInstances []*shieldInstance
 // Example:
 //
 //	func main() {
-//		defer shieldgin.Cleanup()
+//		defer arcisgin.Cleanup()
 //		r := gin.Default()
-//		r.Use(shieldgin.Middleware())
+//		r.Use(arcisgin.Middleware())
 //		r.Run(":8080")
 //	}
 //
@@ -172,7 +172,7 @@ var activeInstances []*shieldInstance
 //	defer stop()
 //	go r.Run(":8080")
 //	<-ctx.Done()
-//	shieldgin.Cleanup()
+//	arcisgin.Cleanup()
 func Cleanup() {
 	for _, instance := range activeInstances {
 		instance.Close()
@@ -187,8 +187,8 @@ func Middleware() gin.HandlerFunc {
 
 // MiddlewareWithConfig returns a Gin middleware with custom configuration.
 func MiddlewareWithConfig(config Config) gin.HandlerFunc {
-	// Convert to core Shield config
-	shieldConfig := shield.Config{
+	// Convert to core Arcis config
+	shieldConfig := arcis.Config{
 		Sanitize:          config.Sanitize,
 		SanitizeXSS:       config.SanitizeXSS,
 		SanitizeSQL:       config.SanitizeSQL,
@@ -211,22 +211,22 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 		IsDev:             config.IsDev,
 	}
 
-	sanitizer := shield.NewSanitizer(shieldConfig)
-	instance := &shieldInstance{}
+	sanitizer := arcis.NewSanitizer(shieldConfig)
+	instance := &arcisInstance{}
 
-	var rateLimiter *shield.RateLimiter
+	var rateLimiter *arcis.RateLimiter
 	if config.RateLimit {
 		if config.RateLimitStore != nil {
-			rateLimiter = shield.NewRateLimiterWithStore(config.RateLimitMax, config.RateLimitWindow, config.RateLimitStore)
+			rateLimiter = arcis.NewRateLimiterWithStore(config.RateLimitMax, config.RateLimitWindow, config.RateLimitStore)
 		} else {
-			rateLimiter = shield.NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
+			rateLimiter = arcis.NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
 		}
 		instance.rateLimiter = rateLimiter
 	}
 
-	var securityHeaders *shield.SecurityHeaders
+	var securityHeaders *arcis.SecurityHeaders
 	if config.Headers {
-		securityHeaders = shield.NewSecurityHeaders(shieldConfig)
+		securityHeaders = arcis.NewSecurityHeaders(shieldConfig)
 	}
 
 	activeInstances = append(activeInstances, instance)
@@ -264,7 +264,7 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 		c.Writer.Header().Del("X-Powered-By")
 
 		// Store sanitizer in context for use in handlers
-		c.Set("shield_sanitizer", sanitizer)
+		c.Set("arcis_sanitizer", sanitizer)
 
 		c.Next()
 	}
@@ -277,7 +277,7 @@ func Headers() gin.HandlerFunc {
 
 // HeadersWithConfig returns a headers middleware with custom configuration.
 func HeadersWithConfig(config Config) gin.HandlerFunc {
-	shieldConfig := shield.Config{
+	shieldConfig := arcis.Config{
 		CSP:               config.CSP,
 		FrameOptions:      config.FrameOptions,
 		HSTSMaxAge:        config.HSTSMaxAge,
@@ -288,7 +288,7 @@ func HeadersWithConfig(config Config) gin.HandlerFunc {
 		CacheControlValue: config.CacheControlValue,
 	}
 
-	headers := shield.NewSecurityHeaders(shieldConfig)
+	headers := arcis.NewSecurityHeaders(shieldConfig)
 
 	return func(c *gin.Context) {
 		for key, value := range headers.GetHeaders() {
@@ -311,10 +311,10 @@ func RateLimit(max int, window time.Duration) gin.HandlerFunc {
 // Example:
 //
 //	store := myredis.NewStore(redisClient)
-//	r.Use(shieldgin.RateLimitWithStore(100, time.Minute, store))
-func RateLimitWithStore(max int, window time.Duration, store shield.RateLimitStore) gin.HandlerFunc {
-	limiter := shield.NewRateLimiterWithStore(max, window, store)
-	instance := &shieldInstance{rateLimiter: limiter}
+//	r.Use(arcisgin.RateLimitWithStore(100, time.Minute, store))
+func RateLimitWithStore(max int, window time.Duration, store arcis.RateLimitStore) gin.HandlerFunc {
+	limiter := arcis.NewRateLimiterWithStore(max, window, store)
+	instance := &arcisInstance{rateLimiter: limiter}
 	activeInstances = append(activeInstances, instance)
 
 	return func(c *gin.Context) {
@@ -339,8 +339,8 @@ func RateLimitWithStore(max int, window time.Duration, store shield.RateLimitSto
 
 // RateLimitWithSkip returns a rate limiting middleware with custom skip function.
 func RateLimitWithSkip(max int, window time.Duration, skip func(*gin.Context) bool) gin.HandlerFunc {
-	limiter := shield.NewRateLimiter(max, window)
-	instance := &shieldInstance{rateLimiter: limiter}
+	limiter := arcis.NewRateLimiter(max, window)
+	instance := &arcisInstance{rateLimiter: limiter}
 	activeInstances = append(activeInstances, instance)
 
 	return func(c *gin.Context) {
@@ -375,7 +375,7 @@ func Sanitizer() gin.HandlerFunc {
 
 // SanitizerWithConfig returns a sanitizer middleware with custom configuration.
 func SanitizerWithConfig(config Config) gin.HandlerFunc {
-	shieldConfig := shield.Config{
+	shieldConfig := arcis.Config{
 		SanitizeXSS:   config.SanitizeXSS,
 		SanitizeSQL:   config.SanitizeSQL,
 		SanitizeNoSQL: config.SanitizeNoSQL,
@@ -384,20 +384,20 @@ func SanitizerWithConfig(config Config) gin.HandlerFunc {
 		MaxInputSize:  config.MaxInputSize,
 	}
 
-	sanitizer := shield.NewSanitizer(shieldConfig)
+	sanitizer := arcis.NewSanitizer(shieldConfig)
 
 	return func(c *gin.Context) {
-		c.Set("shield_sanitizer", sanitizer)
+		c.Set("arcis_sanitizer", sanitizer)
 		c.Next()
 	}
 }
 
-// GetSanitizer retrieves the Shield sanitizer from the Gin context.
-func GetSanitizer(c *gin.Context) *shield.Sanitizer {
-	if s, exists := c.Get("shield_sanitizer"); exists {
-		return s.(*shield.Sanitizer)
+// GetSanitizer retrieves the Arcis sanitizer from the Gin context.
+func GetSanitizer(c *gin.Context) *arcis.Sanitizer {
+	if s, exists := c.Get("arcis_sanitizer"); exists {
+		return s.(*arcis.Sanitizer)
 	}
-	return shield.NewSanitizer(shield.DefaultConfig())
+	return arcis.NewSanitizer(arcis.DefaultConfig())
 }
 
 // SanitizeJSON sanitizes JSON data using the sanitizer from context.
@@ -410,7 +410,7 @@ func GetSanitizer(c *gin.Context) *shield.Sanitizer {
 //	        c.JSON(400, gin.H{"error": err.Error()})
 //	        return
 //	    }
-//	    data = shieldgin.SanitizeJSON(c, data)
+//	    data = arcisgin.SanitizeJSON(c, data)
 //	    // Use sanitized data...
 //	}
 func SanitizeJSON(c *gin.Context, data map[string]interface{}) map[string]interface{} {
@@ -424,9 +424,9 @@ func SanitizeString(c *gin.Context, value string) string {
 	return sanitizer.SanitizeString(value)
 }
 
-// Validate creates a validation middleware using Shield's validator.
-func Validate(schema shield.ValidationSchema) gin.HandlerFunc {
-	validator := shield.NewValidator(schema)
+// Validate creates a validation middleware using Arcis's validator.
+func Validate(schema arcis.ValidationSchema) gin.HandlerFunc {
+	validator := arcis.NewValidator(schema)
 
 	return func(c *gin.Context) {
 		var data map[string]interface{}
@@ -460,7 +460,7 @@ func GetValidatedBody(c *gin.Context) map[string]interface{} {
 
 // ErrorHandler returns a Gin error handler middleware.
 func ErrorHandler(isDev bool) gin.HandlerFunc {
-	handler := shield.NewErrorHandler(isDev)
+	handler := arcis.NewErrorHandler(isDev)
 
 	return func(c *gin.Context) {
 		c.Next()

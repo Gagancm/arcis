@@ -1,6 +1,6 @@
 # Redis Store Examples for Distributed Rate Limiting
 
-Shield supports pluggable stores for rate limiting. This enables distributed rate limiting across multiple server instances using Redis (or any other shared storage).
+Arcis supports pluggable stores for rate limiting. This enables distributed rate limiting across multiple server instances using Redis (or any other shared storage).
 
 ## Why Redis?
 
@@ -35,16 +35,16 @@ pip install redis
 ### Node.js
 
 ```typescript
-import shield from '@aspect.dev/shield-node';
+import arcis from '@arcis/node';
 import { RedisRateLimitStore } from './node-redis-store';
 
 const redisStore = new RedisRateLimitStore({
   host: 'localhost',
   port: 6379,
-  keyPrefix: 'shield:ratelimit:',
+  keyPrefix: 'arcis:ratelimit:',
 });
 
-app.use(shield({
+app.use(arcis({
   rateLimit: {
     max: 100,
     windowMs: 60000,

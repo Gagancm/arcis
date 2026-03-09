@@ -1,5 +1,5 @@
 """
-Shield Core - Main Shield class and components
+Arcis Core - Main Arcis class and components
 
 This module provides the core security functionality for Python web frameworks.
 """
@@ -748,7 +748,7 @@ class SafeLogger:
     
     def __init__(
         self,
-        name: str = "shield",
+        name: str = "arcis",
         redact_keys: Optional[List[str]] = None,
         max_length: int = 10000,
     ):
@@ -886,20 +886,20 @@ def create_error_handler(is_dev: bool = False, logger: Optional[SafeLogger] = No
 
 
 # ============================================
-# MAIN SHIELD CLASS
+# MAIN ARCIS CLASS
 # ============================================
 
-class Shield:
+class Arcis:
     """
-    Main Shield class - one-line security for Python web frameworks.
-    
+    Main Arcis class - one-line security for Python web frameworks.
+
     Usage:
         # Flask
-        from shield import Shield
-        Shield(app)
-        
+        from shield import Arcis
+        Arcis(app)
+
         # Or configure:
-        Shield(app, rate_limit_max=50, sanitize_sql=False)
+        Arcis(app, rate_limit_max=50, sanitize_sql=False)
     """
     
     def __init__(
@@ -953,7 +953,7 @@ class Shield:
             self.init_app(app)
     
     def init_app(self, app):
-        """Initialize Shield with a Flask or similar app."""
+        """Initialize Arcis with a Flask or similar app."""
         self._app = app
         
         # Detect framework
@@ -974,9 +974,9 @@ class Shield:
     def _init_flask(self, app):
         """Initialize for Flask."""
         from flask import request, g
-        
+
         @app.before_request
-        def shield_before_request():
+        def arcis_before_request():
             # Rate limiting
             if self.rate_limiter:
                 try:
@@ -998,7 +998,7 @@ class Shield:
                     g.json = g.sanitized_json
         
         @app.after_request
-        def shield_after_request(response):
+        def arcis_after_request(response):
             # Add security headers
             if self.security_headers:
                 self.security_headers.apply(response)
@@ -1024,9 +1024,9 @@ class Shield:
     
     def _init_fastapi(self, app):
         """Initialize for FastAPI."""
-        from .fastapi import ShieldMiddleware
+        from .fastapi import ArcisMiddleware
         app.add_middleware(
-            ShieldMiddleware,
+            ArcisMiddleware,
             sanitizer=self.sanitizer,
             rate_limiter=self.rate_limiter,
             security_headers=self.security_headers,

@@ -1,7 +1,7 @@
 /*
-Package shield provides one-line security for Go web applications.
+Package arcis provides one-line security for Go web applications.
 
-Shield is a comprehensive security middleware that provides:
+Arcis is a comprehensive security middleware that provides:
   - Input sanitization (XSS, SQL injection, NoSQL injection, path traversal)
   - Rate limiting with configurable windows and limits
   - Security headers (CSP, HSTS, X-Frame-Options, etc.)
@@ -10,13 +10,13 @@ Shield is a comprehensive security middleware that provides:
 
 Usage with net/http:
 
-	import "github.com/aspect.dev/shield-go"
+	import "github.com/GagancM/arcis"
 
 	// Full protection (recommended)
-	http.Handle("/", shield.Protect(myHandler))
+	http.Handle("/", arcis.Protect(myHandler))
 
 	// Or with custom config
-	s := shield.NewWithConfig(shield.Config{
+	s := arcis.NewWithConfig(arcis.Config{
 		RateLimitMax: 50,
 		CSP: "default-src 'none'",
 	})
@@ -24,19 +24,19 @@ Usage with net/http:
 
 Usage with Gin:
 
-	import "github.com/aspect.dev/shield-go/gin"
+	import "github.com/GagancM/arcis/gin"
 
 	r := gin.Default()
-	r.Use(shieldgin.Middleware())
+	r.Use(arcisgin.Middleware())
 
 Usage with Echo:
 
-	import "github.com/aspect.dev/shield-go/echo"
+	import "github.com/GagancM/arcis/echo"
 
 	e := echo.New()
-	e.Use(shieldecho.Middleware())
+	e.Use(arcisecho.Middleware())
 */
-package shield
+package arcis
 
 import (
 	"context"
@@ -51,13 +51,13 @@ import (
 	"time"
 )
 
-// Version is the current version of Shield.
+// Version is the current version of Arcis.
 const Version = "1.0.0"
 
 // MaxRecursionDepth is the maximum depth for recursive operations.
 const MaxRecursionDepth = 10
 
-// Config holds Shield configuration options.
+// Config holds Arcis configuration options.
 type Config struct {
 	// Sanitizer options
 	Sanitize      bool
@@ -90,7 +90,7 @@ type Config struct {
 	IsDev bool // Show error details in development mode
 }
 
-// DefaultConfig returns the default Shield configuration.
+// DefaultConfig returns the default Arcis configuration.
 // All protections are enabled with sensible defaults.
 func DefaultConfig() Config {
 	return Config{
@@ -116,8 +116,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// Shield is the main security middleware.
-type Shield struct {
+// Arcis is the main security middleware.
+type Arcis struct {
 	config       Config
 	sanitizer    *Sanitizer
 	rateLimiter  *RateLimiter
@@ -125,14 +125,14 @@ type Shield struct {
 	errorHandler *ErrorHandler
 }
 
-// New creates a new Shield instance with default configuration.
-func New() *Shield {
+// New creates a new Arcis instance with default configuration.
+func New() *Arcis {
 	return NewWithConfig(DefaultConfig())
 }
 
-// NewWithConfig creates a new Shield instance with custom configuration.
-func NewWithConfig(config Config) *Shield {
-	s := &Shield{config: config}
+// NewWithConfig creates a new Arcis instance with custom configuration.
+func NewWithConfig(config Config) *Arcis {
+	s := &Arcis{config: config}
 
 	if config.Sanitize {
 		s.sanitizer = NewSanitizer(config)
@@ -158,14 +158,14 @@ func NewWithConfig(config Config) *Shield {
 	return s
 }
 
-// Protect wraps an http.Handler with Shield protection using default config.
-// This is the simplest way to add Shield protection to your handlers.
+// Protect wraps an http.Handler with Arcis protection using default config.
+// This is the simplest way to add Arcis protection to your handlers.
 func Protect(handler http.Handler) http.Handler {
 	return New().Handler(handler)
 }
 
 // Handler returns an http.Handler middleware.
-func (s *Shield) Handler(next http.Handler) http.Handler {
+func (s *Arcis) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Rate limiting
 		if s.rateLimiter != nil {
@@ -203,16 +203,16 @@ func (s *Shield) Handler(next http.Handler) http.Handler {
 	})
 }
 
-// Close gracefully shuts down the Shield instance, cleaning up resources.
+// Close gracefully shuts down the Arcis instance, cleaning up resources.
 // Call this when your server is shutting down.
-func (s *Shield) Close() {
+func (s *Arcis) Close() {
 	if s.rateLimiter != nil {
 		s.rateLimiter.Close()
 	}
 }
 
 // Sanitize sanitizes a string value.
-func (s *Shield) Sanitize(value string) string {
+func (s *Arcis) Sanitize(value string) string {
 	if s.sanitizer == nil {
 		return value
 	}
@@ -220,7 +220,7 @@ func (s *Shield) Sanitize(value string) string {
 }
 
 // SanitizeMap sanitizes a map (like JSON body).
-func (s *Shield) SanitizeMap(data map[string]interface{}) map[string]interface{} {
+func (s *Arcis) SanitizeMap(data map[string]interface{}) map[string]interface{} {
 	if s.sanitizer == nil {
 		return data
 	}
@@ -229,7 +229,7 @@ func (s *Shield) SanitizeMap(data map[string]interface{}) map[string]interface{}
 
 // SanitizeBody reads, sanitizes, and returns JSON body from request.
 // The original body is replaced with the sanitized version.
-func (s *Shield) SanitizeBody(r *http.Request) (map[string]interface{}, error) {
+func (s *Arcis) SanitizeBody(r *http.Request) (map[string]interface{}, error) {
 	if s.sanitizer == nil {
 		var data map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
@@ -514,8 +514,8 @@ type RateLimitEntry struct {
 // Example:
 //
 //	type RedisStore struct{ client *redis.Client }
-//	func (s *RedisStore) Get(key string) *shield.RateLimitEntry { ... }
-//	func (s *RedisStore) Set(key string, e *shield.RateLimitEntry) { ... }
+//	func (s *RedisStore) Get(key string) *arcis.RateLimitEntry { ... }
+//	func (s *RedisStore) Set(key string, e *arcis.RateLimitEntry) { ... }
 //	func (s *RedisStore) Increment(key string) int { ... }
 //	func (s *RedisStore) Cleanup() {}
 type RateLimitStore interface {
@@ -583,8 +583,8 @@ func NewRateLimiter(max int, window time.Duration) *RateLimiter {
 // Example:
 //
 //	store := myredis.NewStore(redisClient)
-//	limiter := shield.NewRateLimiterWithStore(100, time.Minute, store)
-//	http.Handle("/", shield.New().WithRateLimiter(limiter).Handler(myHandler))
+//	limiter := arcis.NewRateLimiterWithStore(100, time.Minute, store)
+//	http.Handle("/", arcis.New().WithRateLimiter(limiter).Handler(myHandler))
 func NewRateLimiterWithStore(max int, window time.Duration, store RateLimitStore) *RateLimiter {
 	ctx, cancel := context.WithCancel(context.Background())
 	rl := &RateLimiter{
@@ -1098,7 +1098,7 @@ func ValidateHandler(schema ValidationSchema, next http.Handler) http.Handler {
 
 type contextKey string
 
-const validatedBodyKey contextKey = "shield_validated_body"
+const validatedBodyKey contextKey = "arcis_validated_body"
 
 // GetValidatedBody retrieves the validated body from request context.
 func GetValidatedBody(r *http.Request) map[string]interface{} {

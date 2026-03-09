@@ -1,5 +1,5 @@
 """
-Shield FastAPI Integration Tests
+Arcis FastAPI Integration Tests
 =================================
 
 Tests for FastAPI middleware integration.
@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
-from shield.fastapi import ShieldMiddleware, get_sanitized_body
+from shield.fastapi import ArcisMiddleware, get_sanitized_body
 
 
 # ============================================================================
@@ -28,9 +28,9 @@ from shield.fastapi import ShieldMiddleware, get_sanitized_body
 
 @pytest.fixture
 def app():
-    """Create a FastAPI app with Shield middleware."""
+    """Create a FastAPI app with Arcis middleware."""
     app = FastAPI()
-    app.add_middleware(ShieldMiddleware)
+    app.add_middleware(ArcisMiddleware)
     
     @app.get("/")
     async def root():
@@ -57,7 +57,7 @@ def client(app):
 def rate_limited_app():
     """Create app with low rate limit for testing."""
     app = FastAPI()
-    app.add_middleware(ShieldMiddleware, rate_limit_max=3, rate_limit_window_ms=60000)
+    app.add_middleware(ArcisMiddleware, rate_limit_max=3, rate_limit_window_ms=60000)
     
     @app.get("/")
     async def root():
@@ -163,7 +163,7 @@ class TestFastAPICustomConfig:
     
     def test_custom_csp(self):
         app = FastAPI()
-        app.add_middleware(ShieldMiddleware, csp="default-src 'none'")
+        app.add_middleware(ArcisMiddleware, csp="default-src 'none'")
         
         @app.get("/")
         async def root():
@@ -176,7 +176,7 @@ class TestFastAPICustomConfig:
     
     def test_disable_sanitization(self):
         app = FastAPI()
-        app.add_middleware(ShieldMiddleware, sanitize=False)
+        app.add_middleware(ArcisMiddleware, sanitize=False)
         
         @app.get("/")
         async def root():
@@ -188,7 +188,7 @@ class TestFastAPICustomConfig:
     
     def test_disable_rate_limiting(self):
         app = FastAPI()
-        app.add_middleware(ShieldMiddleware, rate_limit=False)
+        app.add_middleware(ArcisMiddleware, rate_limit=False)
         
         @app.get("/")
         async def root():
@@ -202,7 +202,7 @@ class TestFastAPICustomConfig:
     
     def test_disable_headers(self):
         app = FastAPI()
-        app.add_middleware(ShieldMiddleware, headers=False)
+        app.add_middleware(ArcisMiddleware, headers=False)
         
         @app.get("/")
         async def root():
@@ -507,7 +507,7 @@ class TestAsyncRateLimiterWithMiddleware:
         """Create app using async rate limiter explicitly."""
         app = FastAPI()
         app.add_middleware(
-            ShieldMiddleware,
+            ArcisMiddleware,
             rate_limit_max=3,
             rate_limit_window_ms=60000,
             use_async_rate_limiter=True

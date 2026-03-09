@@ -1,24 +1,24 @@
 /**
- * Shield - One-line security for Node.js apps
+ * Arcis - One-line security for Node.js apps
  * A cross-platform security library
  *
- * @module @shield/node
+ * @module @arcis/node
  * @version 1.0.0
  *
  * @example
  * // Full protection (recommended)
- * import { shield } from '@shield/node';
- * app.use(shield());
+ * import { arcis } from '@arcis/node';
+ * app.use(arcis());
  *
  * @example
  * // Granular control
- * app.use(shield.headers());
- * app.use(shield.rateLimit({ max: 100, windowMs: 60000 }));
- * app.use(shield.sanitize());
+ * app.use(arcis.headers());
+ * app.use(arcis.rateLimit({ max: 100, windowMs: 60000 }));
+ * app.use(arcis.sanitize());
  *
  * @example
  * // With validation
- * app.post('/users', shield.validate({
+ * app.post('/users', arcis.validate({
  *   email: { type: 'email', required: true },
  *   age: { type: 'number', min: 0, max: 150 }
  * }), handler);
@@ -30,8 +30,8 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 // TYPES
 // ============================================
 
-/** Main Shield configuration options */
-export interface ShieldOptions {
+/** Main Arcis configuration options */
+export interface ArcisOptions {
   /** Enable/configure input sanitization. Default: true */
   sanitize?: boolean | SanitizeOptions;
   /** Enable/configure rate limiting. Default: true */
@@ -872,11 +872,11 @@ export function errorHandler(
 }
 
 // ============================================
-// MAIN SHIELD MIDDLEWARE
+// MAIN ARCIS MIDDLEWARE
 // ============================================
 
-interface ShieldFunction {
-  (options?: ShieldOptions): RequestHandler[];
+interface ArcisFunction {
+  (options?: ArcisOptions): RequestHandler[];
   /** Clean up resources (rate limiter intervals, etc.) */
   close?: () => void;
   sanitize: typeof createSanitizer;
@@ -888,20 +888,20 @@ interface ShieldFunction {
 }
 
 /**
- * Create Shield middleware with all protections enabled.
+ * Create Arcis middleware with all protections enabled.
  *
  * @example
  * // Full protection
- * app.use(shield());
+ * app.use(arcis());
  *
  * @example
  * // Custom configuration
- * app.use(shield({
+ * app.use(arcis({
  *   rateLimit: { max: 50 },
  *   headers: { frameOptions: 'SAMEORIGIN' }
  * }));
  */
-export function shield(options: ShieldOptions = {}): RequestHandler[] {
+export function arcis(options: ArcisOptions = {}): RequestHandler[] {
   const middlewares: RequestHandler[] = [];
   const cleanupFns: (() => void)[] = [];
 
@@ -936,12 +936,12 @@ export function shield(options: ShieldOptions = {}): RequestHandler[] {
 }
 
 // Attach individual functions for granular use
-const shieldWithMethods = shield as ShieldFunction;
-shieldWithMethods.sanitize = createSanitizer;
-shieldWithMethods.rateLimit = createRateLimiter;
-shieldWithMethods.headers = createHeaders;
-shieldWithMethods.validate = validate;
-shieldWithMethods.logger = createSafeLogger;
-shieldWithMethods.errorHandler = errorHandler;
+const arcisWithMethods = arcis as ArcisFunction;
+arcisWithMethods.sanitize = createSanitizer;
+arcisWithMethods.rateLimit = createRateLimiter;
+arcisWithMethods.headers = createHeaders;
+arcisWithMethods.validate = validate;
+arcisWithMethods.logger = createSafeLogger;
+arcisWithMethods.errorHandler = errorHandler;
 
-export default shieldWithMethods;
+export default arcisWithMethods;

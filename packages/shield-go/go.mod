@@ -1,4 +1,4 @@
-module github.com/aspect.dev/shield-go
+module github.com/GagancM/arcis
 
 go 1.21
 

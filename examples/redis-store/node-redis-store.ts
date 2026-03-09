@@ -1,15 +1,15 @@
 /**
- * Redis Rate Limit Store for Shield (Node.js)
- * 
+ * Redis Rate Limit Store for Arcis (Node.js)
+ *
  * Provides distributed rate limiting using Redis as the backing store.
  * This enables consistent rate limiting across multiple server instances.
- * 
+ *
  * @example
  * import { RedisRateLimitStore } from './redis-store';
- * import shield from '@aspect.dev/shield-node';
- * 
+ * import arcis from '@arcis/node';
+ *
  * const store = new RedisRateLimitStore({ host: 'localhost', port: 6379 });
- * app.use(shield({ rateLimit: { store } }));
+ * app.use(arcis({ rateLimit: { store } }));
  */
 
 import Redis, { RedisOptions } from 'ioredis';
@@ -26,7 +26,7 @@ export interface RateLimitStore {
 }
 
 export interface RedisStoreOptions extends RedisOptions {
-  /** Prefix for all rate limit keys. Default: 'shield:ratelimit:' */
+  /** Prefix for all rate limit keys. Default: 'arcis:ratelimit:' */
   keyPrefix?: string;
   /** TTL for keys in seconds. Default: 3600 (1 hour) */
   ttlSeconds?: number;
@@ -48,7 +48,7 @@ export class RedisRateLimitStore implements RateLimitStore {
   private closed: boolean = false;
 
   constructor(options: RedisStoreOptions = {}) {
-    const { keyPrefix = 'shield:ratelimit:', ttlSeconds = 3600, ...redisOptions } = options;
+    const { keyPrefix = 'arcis:ratelimit:', ttlSeconds = 3600, ...redisOptions } = options;
     
     this.keyPrefix = keyPrefix;
     this.ttlSeconds = ttlSeconds;
@@ -56,11 +56,11 @@ export class RedisRateLimitStore implements RateLimitStore {
 
     // Handle connection errors gracefully
     this.redis.on('error', (err) => {
-      console.error('[Shield Redis Store] Connection error:', err.message);
+      console.error('[Arcis Redis Store] Connection error:', err.message);
     });
 
     this.redis.on('connect', () => {
-      console.log('[Shield Redis Store] Connected to Redis');
+      console.log('[Arcis Redis Store] Connected to Redis');
     });
   }
 
@@ -90,7 +90,7 @@ export class RedisRateLimitStore implements RateLimitStore {
         resetTime: parseInt(data.resetTime, 10),
       };
     } catch (error) {
-      console.error('[Shield Redis Store] Get error:', error);
+      console.error('[Arcis Redis Store] Get error:', error);
       return null;
     }
   }
@@ -119,7 +119,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       
       await pipeline.exec();
     } catch (error) {
-      console.error('[Shield Redis Store] Set error:', error);
+      console.error('[Arcis Redis Store] Set error:', error);
     }
   }
 
@@ -134,7 +134,7 @@ export class RedisRateLimitStore implements RateLimitStore {
       const newCount = await this.redis.hincrby(fullKey, 'count', 1);
       return newCount;
     } catch (error) {
-      console.error('[Shield Redis Store] Increment error:', error);
+      console.error('[Arcis Redis Store] Increment error:', error);
       return 1; // Fail open
     }
   }
@@ -146,7 +146,7 @@ export class RedisRateLimitStore implements RateLimitStore {
     if (this.closed) return;
     this.closed = true;
     await this.redis.quit();
-    console.log('[Shield Redis Store] Connection closed');
+    console.log('[Arcis Redis Store] Connection closed');
   }
 }
 
@@ -191,7 +191,7 @@ export class RedisRateLimitStoreAtomic implements RateLimitStore {
 
   constructor(
     redisOptions: RedisOptions = {},
-    keyPrefix: string = 'shield:ratelimit:',
+    keyPrefix: string = 'arcis:ratelimit:',
     windowMs: number = 60000
   ) {
     this.keyPrefix = keyPrefix;
@@ -199,13 +199,13 @@ export class RedisRateLimitStoreAtomic implements RateLimitStore {
     this.redis = new Redis(redisOptions);
 
     // Define the Lua script
-    this.redis.defineCommand('shieldIncr', {
+    this.redis.defineCommand('arcisIncr', {
       numberOfKeys: 1,
       lua: RedisRateLimitStoreAtomic.INCR_SCRIPT,
     });
 
     this.redis.on('error', (err) => {
-      console.error('[Shield Redis Store] Connection error:', err.message);
+      console.error('[Arcis Redis Store] Connection error:', err.message);
     });
   }
 
@@ -236,7 +236,7 @@ export class RedisRateLimitStoreAtomic implements RateLimitStore {
 
       return entry;
     } catch (error) {
-      console.error('[Shield Redis Store] Get error:', error);
+      console.error('[Arcis Redis Store] Get error:', error);
       return null;
     }
   }
@@ -258,7 +258,7 @@ export class RedisRateLimitStoreAtomic implements RateLimitStore {
       
       await pipeline.exec();
     } catch (error) {
-      console.error('[Shield Redis Store] Set error:', error);
+      console.error('[Arcis Redis Store] Set error:', error);
     }
   }
 
@@ -267,15 +267,15 @@ export class RedisRateLimitStoreAtomic implements RateLimitStore {
 
     try {
       const fullKey = this.buildKey(key);
-      // @ts-expect-error - shieldIncr is dynamically defined
-      const [count] = await this.redis.shieldIncr(
+      // @ts-expect-error - arcisIncr is dynamically defined
+      const [count] = await this.redis.arcisIncr(
         fullKey,
         this.windowMs,
         Date.now()
       ) as [number, number];
       return count;
     } catch (error) {
-      console.error('[Shield Redis Store] Increment error:', error);
+      console.error('[Arcis Redis Store] Increment error:', error);
       return 1; // Fail open
     }
   }

@@ -1,5 +1,5 @@
 """
-Shield Python Test Suite
+Arcis Python Test Suite
 =========================
 
 Tests aligned with TEST_VECTORS.json spec for cross-platform consistency.

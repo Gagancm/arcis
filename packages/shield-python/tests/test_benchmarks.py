@@ -1,8 +1,8 @@
 """
-Shield Performance Benchmarks
+Arcis Performance Benchmarks
 ==============================
 
-Benchmarks for core Shield components using pytest-benchmark.
+Benchmarks for core Arcis components using pytest-benchmark.
 Mirrors the Go BenchmarkXxx tests in shield-go/shield_test.go.
 
 Run with:

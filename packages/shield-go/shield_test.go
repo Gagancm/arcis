@@ -1,11 +1,11 @@
 /*
-Shield Go Test Suite
+Arcis Go Test Suite
 =====================
 
 Tests aligned with TEST_VECTORS.json spec for cross-platform consistency.
 Run with: go test -v ./...
 */
-package shield
+package arcis
 
 import (
 	"encoding/json"

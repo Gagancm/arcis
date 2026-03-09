@@ -1,5 +1,5 @@
 {
-  "name": "@shield/node",
+  "name": "@arcis/node",
   "version": "1.0.0",
   "description": "One-line security middleware for Node.js apps.",
   "main": "dist/index.js",
@@ -37,7 +37,7 @@
     "csrf",
     "helmet",
     "nodejs",
-    "shield"
+    "arcis"
   ],
   "author": "Your Name",
   "license": "MIT",

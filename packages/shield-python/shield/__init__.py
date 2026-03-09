@@ -1,63 +1,63 @@
 """
-Shield Security Library for Python
+Arcis Security Library for Python
 ===================================
 
 One-line security for Flask, FastAPI, and Django applications.
 
 Usage:
     # Flask
-    from shield import Shield
+    from shield import Arcis
     app = Flask(__name__)
-    shield = Shield(app)
-    
+    arcis = Arcis(app)
+
     # Access sanitized JSON in routes
     from flask import g
     @app.route('/api', methods=['POST'])
     def api():
         data = g.json  # or g.sanitized_json
-    
+
     # FastAPI
     from fastapi import FastAPI, Depends
-    from shield.fastapi import ShieldMiddleware, get_json
-    
+    from shield.fastapi import ArcisMiddleware, get_json
+
     app = FastAPI()
-    app.add_middleware(ShieldMiddleware)
-    
+    app.add_middleware(ArcisMiddleware)
+
     @app.post("/api")
     async def api(data: dict = Depends(get_json)):
         pass  # data is sanitized
-    
+
     # FastAPI with async rate limiter (new!)
     from shield.fastapi import AsyncRateLimiter, create_rate_limit_dependency
-    
+
     # Per-route rate limiting
     strict_limit = create_rate_limit_dependency(max_requests=10)
-    
+
     @app.post("/login", dependencies=[Depends(strict_limit)])
     async def login():
         pass
-    
+
     # Django (settings.py)
-    MIDDLEWARE = ['shield.django.ShieldMiddleware', ...]
-    
+    MIDDLEWARE = ['shield.django.ArcisMiddleware', ...]
+
     # In views:
     from shield.django import get_json
     def my_view(request):
         data = get_json(request)
 
 Cleanup:
-    When your application shuts down, call shield.close() to clean up
+    When your application shuts down, call arcis.close() to clean up
     background threads (rate limiter cleanup thread).
-    
+
     # Flask example
     import atexit
-    shield = Shield(app)
-    atexit.register(shield.close)
+    arcis = Arcis(app)
+    atexit.register(arcis.close)
 """
 
 from .core import (
     # Main class
-    Shield,
+    Arcis,
     # Core components
     Sanitizer,
     RateLimiter,
@@ -108,7 +108,7 @@ except ImportError:
 __version__ = "1.0.0"
 __all__ = [
     # Main class
-    "Shield",
+    "Arcis",
     # Core components
     "Sanitizer",
     "RateLimiter",
@@ -154,4 +154,4 @@ if _HAS_ASYNC:
 #   from shield.stores.redis import RedisRateLimitStore       # sync (Flask/Django)
 #   from shield.stores.redis import AsyncRedisRateLimitStore  # async (FastAPI)
 #
-# Install with: pip install shield-security[redis]
+# Install with: pip install arcis[redis]

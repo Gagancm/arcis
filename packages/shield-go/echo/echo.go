@@ -1,30 +1,30 @@
 /*
-Package echo provides Shield middleware adapters for the Echo web framework.
+Package echo provides Arcis middleware adapters for the Echo web framework.
 
 Usage:
 
 	import (
 		"github.com/labstack/echo/v4"
-		shieldecho "github.com/aspect.dev/shield-go/echo"
+		arcisecho "github.com/GagancM/arcis/echo"
 	)
 
 	func main() {
 		e := echo.New()
 
 		// Full protection with defaults
-		e.Use(shieldecho.Middleware())
+		e.Use(arcisecho.Middleware())
 
 		// Or with custom config
-		e.Use(shieldecho.MiddlewareWithConfig(shieldecho.Config{
+		e.Use(arcisecho.MiddlewareWithConfig(arcisecho.Config{
 			RateLimitMax:    50,
 			RateLimitWindow: time.Minute,
 			CSP:             "default-src 'self'",
 		}))
 
 		// Granular middleware
-		e.Use(shieldecho.Headers())
-		e.Use(shieldecho.RateLimit(100, time.Minute))
-		e.Use(shieldecho.Sanitizer())
+		e.Use(arcisecho.Headers())
+		e.Use(arcisecho.RateLimit(100, time.Minute))
+		e.Use(arcisecho.Sanitizer())
 
 		e.GET("/", handler)
 		e.Start(":8080")
@@ -32,19 +32,19 @@ Usage:
 
 # Resource Cleanup
 
-Shield's rate limiter runs a background goroutine for cleanup. Call Cleanup()
+Arcis's rate limiter runs a background goroutine for cleanup. Call Cleanup()
 when your application shuts down to stop this goroutine and release resources:
 
 	import (
 		"context"
 		"os/signal"
 		"syscall"
-		shieldecho "github.com/aspect.dev/shield-go/echo"
+		arcisecho "github.com/GagancM/arcis/echo"
 	)
 
 	func main() {
 		e := echo.New()
-		e.Use(shieldecho.Middleware())
+		e.Use(arcisecho.Middleware())
 
 		// Graceful shutdown
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -54,13 +54,13 @@ when your application shuts down to stop this goroutine and release resources:
 
 		<-ctx.Done()
 		e.Shutdown(context.Background())
-		shieldecho.Cleanup() // Stop rate limiter background goroutines
+		arcisecho.Cleanup() // Stop rate limiter background goroutines
 	}
 
 Alternatively, register cleanup with a defer or shutdown hook:
 
 	func main() {
-		defer shieldecho.Cleanup()
+		defer arcisecho.Cleanup()
 		// ... rest of setup
 	}
 */
@@ -73,10 +73,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	shield "github.com/aspect.dev/shield-go"
+	arcis "github.com/GagancM/arcis"
 )
 
-// Config holds Shield middleware configuration for Echo.
+// Config holds Arcis middleware configuration for Echo.
 type Config struct {
 	// Sanitizer options
 	Sanitize      bool
@@ -92,7 +92,7 @@ type Config struct {
 	RateLimitMax    int
 	RateLimitWindow time.Duration
 	RateLimitSkip   func(echo.Context) bool
-	RateLimitStore  shield.RateLimitStore // Optional external store (e.g. Redis)
+	RateLimitStore  arcis.RateLimitStore // Optional external store (e.g. Redis)
 
 	// Security headers options
 	Headers           bool
@@ -109,7 +109,7 @@ type Config struct {
 	IsDev bool
 }
 
-// DefaultConfig returns the default Shield configuration for Echo.
+// DefaultConfig returns the default Arcis configuration for Echo.
 func DefaultConfig() Config {
 	return Config{
 		Sanitize:          true,
@@ -134,29 +134,29 @@ func DefaultConfig() Config {
 	}
 }
 
-// Context key for Shield components
+// Context key for Arcis components
 const (
-	SanitizerKey     = "shield_sanitizer"
-	ValidatedBodyKey = "shield_validated_body"
+	SanitizerKey     = "arcis_sanitizer"
+	ValidatedBodyKey = "arcis_validated_body"
 )
 
-// shieldInstance holds the Shield components for cleanup.
-type shieldInstance struct {
-	rateLimiter *shield.RateLimiter
+// arcisInstance holds the Arcis components for cleanup.
+type arcisInstance struct {
+	rateLimiter *arcis.RateLimiter
 }
 
-// Close cleans up Shield resources, stopping the rate limiter's
+// Close cleans up Arcis resources, stopping the rate limiter's
 // background cleanup goroutine.
-func (s *shieldInstance) Close() {
+func (s *arcisInstance) Close() {
 	if s.rateLimiter != nil {
 		s.rateLimiter.Close()
 	}
 }
 
-// activeInstances tracks Shield instances for cleanup.
-var activeInstances []*shieldInstance
+// activeInstances tracks Arcis instances for cleanup.
+var activeInstances []*arcisInstance
 
-// Cleanup closes all active Shield middleware instances and releases resources.
+// Cleanup closes all active Arcis middleware instances and releases resources.
 // This stops the background goroutines used by rate limiters for automatic
 // cleanup of expired entries.
 //
@@ -167,9 +167,9 @@ var activeInstances []*shieldInstance
 // Example:
 //
 //	func main() {
-//		defer shieldecho.Cleanup()
+//		defer arcisecho.Cleanup()
 //		e := echo.New()
-//		e.Use(shieldecho.Middleware())
+//		e.Use(arcisecho.Middleware())
 //		e.Start(":8080")
 //	}
 //
@@ -180,7 +180,7 @@ var activeInstances []*shieldInstance
 //	go e.Start(":8080")
 //	<-ctx.Done()
 //	e.Shutdown(context.Background())
-//	shieldecho.Cleanup()
+//	arcisecho.Cleanup()
 func Cleanup() {
 	for _, instance := range activeInstances {
 		instance.Close()
@@ -195,8 +195,8 @@ func Middleware() echo.MiddlewareFunc {
 
 // MiddlewareWithConfig returns an Echo middleware with custom configuration.
 func MiddlewareWithConfig(config Config) echo.MiddlewareFunc {
-	// Convert to core Shield config
-	shieldConfig := shield.Config{
+	// Convert to core Arcis config
+	shieldConfig := arcis.Config{
 		Sanitize:          config.Sanitize,
 		SanitizeXSS:       config.SanitizeXSS,
 		SanitizeSQL:       config.SanitizeSQL,
@@ -219,22 +219,22 @@ func MiddlewareWithConfig(config Config) echo.MiddlewareFunc {
 		IsDev:             config.IsDev,
 	}
 
-	sanitizer := shield.NewSanitizer(shieldConfig)
-	instance := &shieldInstance{}
+	sanitizer := arcis.NewSanitizer(shieldConfig)
+	instance := &arcisInstance{}
 
-	var rateLimiter *shield.RateLimiter
+	var rateLimiter *arcis.RateLimiter
 	if config.RateLimit {
 		if config.RateLimitStore != nil {
-			rateLimiter = shield.NewRateLimiterWithStore(config.RateLimitMax, config.RateLimitWindow, config.RateLimitStore)
+			rateLimiter = arcis.NewRateLimiterWithStore(config.RateLimitMax, config.RateLimitWindow, config.RateLimitStore)
 		} else {
-			rateLimiter = shield.NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
+			rateLimiter = arcis.NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
 		}
 		instance.rateLimiter = rateLimiter
 	}
 
-	var securityHeaders *shield.SecurityHeaders
+	var securityHeaders *arcis.SecurityHeaders
 	if config.Headers {
-		securityHeaders = shield.NewSecurityHeaders(shieldConfig)
+		securityHeaders = arcis.NewSecurityHeaders(shieldConfig)
 	}
 
 	activeInstances = append(activeInstances, instance)
@@ -286,7 +286,7 @@ func Headers() echo.MiddlewareFunc {
 
 // HeadersWithConfig returns a headers middleware with custom configuration.
 func HeadersWithConfig(config Config) echo.MiddlewareFunc {
-	shieldConfig := shield.Config{
+	shieldConfig := arcis.Config{
 		CSP:               config.CSP,
 		FrameOptions:      config.FrameOptions,
 		HSTSMaxAge:        config.HSTSMaxAge,
@@ -297,7 +297,7 @@ func HeadersWithConfig(config Config) echo.MiddlewareFunc {
 		CacheControlValue: config.CacheControlValue,
 	}
 
-	headers := shield.NewSecurityHeaders(shieldConfig)
+	headers := arcis.NewSecurityHeaders(shieldConfig)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -322,10 +322,10 @@ func RateLimit(max int, window time.Duration) echo.MiddlewareFunc {
 // Example:
 //
 //	store := myredis.NewStore(redisClient)
-//	e.Use(shieldecho.RateLimitWithStore(100, time.Minute, store))
-func RateLimitWithStore(max int, window time.Duration, store shield.RateLimitStore) echo.MiddlewareFunc {
-	limiter := shield.NewRateLimiterWithStore(max, window, store)
-	instance := &shieldInstance{rateLimiter: limiter}
+//	e.Use(arcisecho.RateLimitWithStore(100, time.Minute, store))
+func RateLimitWithStore(max int, window time.Duration, store arcis.RateLimitStore) echo.MiddlewareFunc {
+	limiter := arcis.NewRateLimiterWithStore(max, window, store)
+	instance := &arcisInstance{rateLimiter: limiter}
 	activeInstances = append(activeInstances, instance)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -351,8 +351,8 @@ func RateLimitWithStore(max int, window time.Duration, store shield.RateLimitSto
 
 // RateLimitWithSkip returns a rate limiting middleware with custom skip function.
 func RateLimitWithSkip(max int, window time.Duration, skip func(echo.Context) bool) echo.MiddlewareFunc {
-	limiter := shield.NewRateLimiter(max, window)
-	instance := &shieldInstance{rateLimiter: limiter}
+	limiter := arcis.NewRateLimiter(max, window)
+	instance := &arcisInstance{rateLimiter: limiter}
 	activeInstances = append(activeInstances, instance)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -387,7 +387,7 @@ func Sanitizer() echo.MiddlewareFunc {
 
 // SanitizerWithConfig returns a sanitizer middleware with custom configuration.
 func SanitizerWithConfig(config Config) echo.MiddlewareFunc {
-	shieldConfig := shield.Config{
+	shieldConfig := arcis.Config{
 		SanitizeXSS:   config.SanitizeXSS,
 		SanitizeSQL:   config.SanitizeSQL,
 		SanitizeNoSQL: config.SanitizeNoSQL,
@@ -396,7 +396,7 @@ func SanitizerWithConfig(config Config) echo.MiddlewareFunc {
 		MaxInputSize:  config.MaxInputSize,
 	}
 
-	sanitizer := shield.NewSanitizer(shieldConfig)
+	sanitizer := arcis.NewSanitizer(shieldConfig)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -406,12 +406,12 @@ func SanitizerWithConfig(config Config) echo.MiddlewareFunc {
 	}
 }
 
-// GetSanitizer retrieves the Shield sanitizer from the Echo context.
-func GetSanitizer(c echo.Context) *shield.Sanitizer {
+// GetSanitizer retrieves the Arcis sanitizer from the Echo context.
+func GetSanitizer(c echo.Context) *arcis.Sanitizer {
 	if s := c.Get(SanitizerKey); s != nil {
-		return s.(*shield.Sanitizer)
+		return s.(*arcis.Sanitizer)
 	}
-	return shield.NewSanitizer(shield.DefaultConfig())
+	return arcis.NewSanitizer(arcis.DefaultConfig())
 }
 
 // SanitizeJSON sanitizes JSON data using the sanitizer from context.
@@ -423,7 +423,7 @@ func GetSanitizer(c echo.Context) *shield.Sanitizer {
 //	    if err := c.Bind(&data); err != nil {
 //	        return c.JSON(400, map[string]string{"error": err.Error()})
 //	    }
-//	    data = shieldecho.SanitizeJSON(c, data)
+//	    data = arcisecho.SanitizeJSON(c, data)
 //	    // Use sanitized data...
 //	}
 func SanitizeJSON(c echo.Context, data map[string]interface{}) map[string]interface{} {
@@ -437,9 +437,9 @@ func SanitizeString(c echo.Context, value string) string {
 	return sanitizer.SanitizeString(value)
 }
 
-// Validate creates a validation middleware using Shield's validator.
-func Validate(schema shield.ValidationSchema) echo.MiddlewareFunc {
-	validator := shield.NewValidator(schema)
+// Validate creates a validation middleware using Arcis's validator.
+func Validate(schema arcis.ValidationSchema) echo.MiddlewareFunc {
+	validator := arcis.NewValidator(schema)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -472,9 +472,9 @@ func GetValidatedBody(c echo.Context) map[string]interface{} {
 }
 
 // ErrorHandler returns an Echo error handler function.
-// Use with e.HTTPErrorHandler = shieldecho.ErrorHandler(isDev)
+// Use with e.HTTPErrorHandler = arcisecho.ErrorHandler(isDev)
 func ErrorHandler(isDev bool) echo.HTTPErrorHandler {
-	handler := shield.NewErrorHandler(isDev)
+	handler := arcis.NewErrorHandler(isDev)
 
 	return func(err error, c echo.Context) {
 		if c.Response().Committed {
@@ -492,7 +492,7 @@ func ErrorHandler(isDev bool) echo.HTTPErrorHandler {
 
 // ErrorMiddleware returns middleware that catches errors and handles them safely.
 func ErrorMiddleware(isDev bool) echo.MiddlewareFunc {
-	handler := shield.NewErrorHandler(isDev)
+	handler := arcis.NewErrorHandler(isDev)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

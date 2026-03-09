@@ -1,13 +1,13 @@
 /*
-Package redisstore provides a Redis-backed rate limit store for Shield.
+Package redisstore provides a Redis-backed rate limit store for Arcis.
 
 This enables distributed rate limiting across multiple server instances.
 
 Usage:
 
 	import (
-		"github.com/aspect.dev/shield-go"
-		redisstore "github.com/aspect.dev/shield-go/examples/redis-store"
+		"github.com/GagancM/arcis"
+		redisstore "github.com/GagancM/arcis/examples/redis-store"
 		"github.com/redis/go-redis/v9"
 	)
 
@@ -17,12 +17,12 @@ Usage:
 		})
 
 		store := redisstore.New(rdb, redisstore.Options{
-			KeyPrefix: "shield:ratelimit:",
+			KeyPrefix: "arcis:ratelimit:",
 			WindowMs:  60000,
 		})
 		defer store.Close()
 
-		s := shield.NewWithConfig(shield.Config{
+		s := arcis.NewWithConfig(arcis.Config{
 			RateLimit:    true,
 			RateLimitMax: 100,
 		})
@@ -60,7 +60,7 @@ type Store interface {
 // Options configures the Redis rate limit store.
 type Options struct {
 	// KeyPrefix is the prefix for all rate limit keys.
-	// Default: "shield:ratelimit:"
+	// Default: "arcis:ratelimit:"
 	KeyPrefix string
 
 	// WindowMs is the rate limit window in milliseconds.
@@ -76,7 +76,7 @@ type Options struct {
 // DefaultOptions returns sensible default options.
 func DefaultOptions() Options {
 	return Options{
-		KeyPrefix: "shield:ratelimit:",
+		KeyPrefix: "arcis:ratelimit:",
 		WindowMs:  60000,
 		TTLBuffer: time.Second,
 	}
@@ -120,7 +120,7 @@ var incrScript = redis.NewScript(`
 // New creates a new Redis rate limit store.
 func New(client *redis.Client, opts Options) *RedisStore {
 	if opts.KeyPrefix == "" {
-		opts.KeyPrefix = "shield:ratelimit:"
+		opts.KeyPrefix = "arcis:ratelimit:"
 	}
 	if opts.WindowMs == 0 {
 		opts.WindowMs = 60000
