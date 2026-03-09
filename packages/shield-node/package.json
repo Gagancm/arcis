@@ -1,7 +1,7 @@
 {
   "name": "@shield/node",
   "version": "1.0.0",
-  "description": "One-line security for Node.js apps. Framer Motion for security.",
+  "description": "One-line security middleware for Node.js apps.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

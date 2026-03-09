@@ -91,6 +91,7 @@ type Config struct {
 	RateLimitMax    int
 	RateLimitWindow time.Duration
 	RateLimitSkip   func(*gin.Context) bool
+	RateLimitStore  shield.RateLimitStore // Optional external store (e.g. Redis)
 
 	// Security headers options
 	Headers           bool
@@ -101,6 +102,7 @@ type Config struct {
 	ReferrerPolicy    string
 	PermissionsPolicy string
 	CacheControl      bool
+	CacheControlValue string // Custom Cache-Control value. Empty = use secure default.
 
 	// Error handler options
 	IsDev bool
@@ -205,6 +207,7 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 		ReferrerPolicy:    config.ReferrerPolicy,
 		PermissionsPolicy: config.PermissionsPolicy,
 		CacheControl:      config.CacheControl,
+		CacheControlValue: config.CacheControlValue,
 		IsDev:             config.IsDev,
 	}
 
@@ -213,7 +216,11 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 
 	var rateLimiter *shield.RateLimiter
 	if config.RateLimit {
-		rateLimiter = shield.NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
+		if config.RateLimitStore != nil {
+			rateLimiter = shield.NewRateLimiterWithStore(config.RateLimitMax, config.RateLimitWindow, config.RateLimitStore)
+		} else {
+			rateLimiter = shield.NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
+		}
 		instance.rateLimiter = rateLimiter
 	}
 
@@ -278,6 +285,7 @@ func HeadersWithConfig(config Config) gin.HandlerFunc {
 		ReferrerPolicy:    config.ReferrerPolicy,
 		PermissionsPolicy: config.PermissionsPolicy,
 		CacheControl:      config.CacheControl,
+		CacheControlValue: config.CacheControlValue,
 	}
 
 	headers := shield.NewSecurityHeaders(shieldConfig)
@@ -295,6 +303,38 @@ func HeadersWithConfig(config Config) gin.HandlerFunc {
 // RateLimit returns a middleware for rate limiting with specified limits.
 func RateLimit(max int, window time.Duration) gin.HandlerFunc {
 	return RateLimitWithSkip(max, window, nil)
+}
+
+// RateLimitWithStore returns a rate limiting middleware backed by a custom store.
+// Use this to plug in a distributed backend such as Redis.
+//
+// Example:
+//
+//	store := myredis.NewStore(redisClient)
+//	r.Use(shieldgin.RateLimitWithStore(100, time.Minute, store))
+func RateLimitWithStore(max int, window time.Duration, store shield.RateLimitStore) gin.HandlerFunc {
+	limiter := shield.NewRateLimiterWithStore(max, window, store)
+	instance := &shieldInstance{rateLimiter: limiter}
+	activeInstances = append(activeInstances, instance)
+
+	return func(c *gin.Context) {
+		result := limiter.Check(c.Request)
+
+		c.Header("X-RateLimit-Limit", strconv.Itoa(result.Limit))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(result.Remaining))
+		c.Header("X-RateLimit-Reset", strconv.Itoa(int(result.Reset.Seconds())))
+
+		if !result.Allowed {
+			c.Header("Retry-After", strconv.Itoa(int(result.Reset.Seconds())))
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"error":      "Too many requests, please try again later.",
+				"retryAfter": int(result.Reset.Seconds()),
+			})
+			return
+		}
+
+		c.Next()
+	}
 }
 
 // RateLimitWithSkip returns a rate limiting middleware with custom skip function.
