@@ -276,18 +276,21 @@ class InMemoryStore:
         self._closed = False
     
     def get(self, key: str) -> Optional[RateLimitEntry]:
+        """Return the rate limit entry for key, or None if missing/expired."""
         with self._lock:
             entry = self._store.get(key)
             if entry and entry.reset_time < time.time():
                 del self._store[key]
                 return None
             return entry
-    
+
     def set(self, key: str, count: int, reset_time: float):
+        """Store a rate limit entry with the given count and reset timestamp."""
         with self._lock:
             self._store[key] = RateLimitEntry(count=count, reset_time=reset_time)
-    
+
     def increment(self, key: str) -> int:
+        """Increment the request count for an existing key and return the new count."""
         with self._lock:
             entry = self._store.get(key)
             if entry:
@@ -446,7 +449,7 @@ class SecurityHeaders:
         hsts_include_subdomains: bool = True,
         referrer_policy: str = "strict-origin-when-cross-origin",
         permissions_policy: str = "geolocation=(), microphone=(), camera=()",
-        cache_control: bool = True,
+        cache_control: Union[bool, str] = True,
         custom_headers: Optional[Dict[str, str]] = None,
     ):
         self.headers = dict(self.DEFAULT_HEADERS)
@@ -475,9 +478,14 @@ class SecurityHeaders:
         if permissions_policy:
             self.headers["Permissions-Policy"] = permissions_policy
         
-        # Cache-Control headers to prevent caching of sensitive data
+        # Cache-Control headers
         if cache_control:
-            self.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
+            cache_control_value = (
+                cache_control
+                if isinstance(cache_control, str)
+                else "no-store, no-cache, must-revalidate, proxy-revalidate"
+            )
+            self.headers["Cache-Control"] = cache_control_value
             self.headers["Pragma"] = "no-cache"
             self.headers["Expires"] = "0"
         

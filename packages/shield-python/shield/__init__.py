@@ -144,8 +144,14 @@ __all__ = [
 if _HAS_ASYNC:
     __all__.extend([
         "AsyncRateLimiter",
-        "AsyncRateLimitExceeded", 
+        "AsyncRateLimitExceeded",
         "AsyncInMemoryStore",
         "AsyncRateLimitStore",
         "create_rate_limit_dependency",
     ])
+
+# Redis store is available as a separate submodule (requires redis extra):
+#   from shield.stores.redis import RedisRateLimitStore       # sync (Flask/Django)
+#   from shield.stores.redis import AsyncRedisRateLimitStore  # async (FastAPI)
+#
+# Install with: pip install shield-security[redis]

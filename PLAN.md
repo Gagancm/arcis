@@ -1,7 +1,5 @@
 # 🛡️ Shield - Multi-Language Security Library
 
-> **Framer Motion for Security** — One line of code. Complete protection. Every language.
-
 ---
 
 ## 📌 Project Goal

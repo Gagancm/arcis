@@ -73,6 +73,7 @@ type Config struct {
 	RateLimitMax    int
 	RateLimitWindow time.Duration
 	RateLimitSkip   func(*http.Request) bool // Skip rate limiting for certain requests
+	RateLimitStore  RateLimitStore           // Optional external store (e.g. Redis)
 
 	// Security headers options
 	Headers           bool
@@ -82,7 +83,8 @@ type Config struct {
 	HSTSSubdomains    bool
 	ReferrerPolicy    string
 	PermissionsPolicy string
-	CacheControl      bool // Enable cache-control headers (default: true)
+	CacheControl      bool   // Enable cache-control headers (default: true)
+	CacheControlValue string // Custom Cache-Control value. Empty = use secure default.
 
 	// Error handler options
 	IsDev bool // Show error details in development mode
@@ -137,7 +139,11 @@ func NewWithConfig(config Config) *Shield {
 	}
 
 	if config.RateLimit {
-		s.rateLimiter = NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
+		if config.RateLimitStore != nil {
+			s.rateLimiter = NewRateLimiterWithStore(config.RateLimitMax, config.RateLimitWindow, config.RateLimitStore)
+		} else {
+			s.rateLimiter = NewRateLimiter(config.RateLimitMax, config.RateLimitWindow)
+		}
 		if config.RateLimitSkip != nil {
 			s.rateLimiter.SetSkipFunc(config.RateLimitSkip)
 		}
@@ -494,15 +500,47 @@ type RateLimitResult struct {
 	Reset     time.Duration
 }
 
+// RateLimitEntry holds the data for a single rate limit record.
+// Used by RateLimitStore implementations.
+type RateLimitEntry struct {
+	Count     int
+	ResetTime time.Time
+}
+
+// RateLimitStore defines the interface for pluggable rate limit store backends.
+// The default implementation is an in-memory store. Implement this interface
+// to use a distributed backend such as Redis for multi-instance deployments.
+//
+// Example:
+//
+//	type RedisStore struct{ client *redis.Client }
+//	func (s *RedisStore) Get(key string) *shield.RateLimitEntry { ... }
+//	func (s *RedisStore) Set(key string, e *shield.RateLimitEntry) { ... }
+//	func (s *RedisStore) Increment(key string) int { ... }
+//	func (s *RedisStore) Cleanup() {}
+type RateLimitStore interface {
+	// Get returns the current entry for a key, or nil if not found or expired.
+	Get(key string) *RateLimitEntry
+	// Set stores a new entry for a key.
+	Set(key string, entry *RateLimitEntry)
+	// Increment atomically increments the request count and returns the new count.
+	// Must be safe for concurrent use.
+	Increment(key string) int
+	// Cleanup removes expired entries. Called periodically by the rate limiter.
+	// A no-op is acceptable for backends that handle expiry via TTL (e.g. Redis).
+	Cleanup()
+}
+
 // RateLimiter handles rate limiting with configurable limits and windows.
 type RateLimiter struct {
-	max      int
-	window   time.Duration
-	store    map[string]*rateLimitEntry
-	mu       sync.RWMutex
-	skipFunc func(*http.Request) bool
-	ctx      context.Context
-	cancel   context.CancelFunc
+	max         int
+	window      time.Duration
+	store       map[string]*rateLimitEntry // default in-memory store
+	customStore RateLimitStore             // optional external store
+	mu          sync.RWMutex
+	skipFunc    func(*http.Request) bool
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 type rateLimitEntry struct {
@@ -510,7 +548,8 @@ type rateLimitEntry struct {
 	resetTime time.Time
 }
 
-// NewRateLimiter creates a new RateLimiter with the given limit and window.
+// NewRateLimiter creates a new RateLimiter with the given limit and window
+// using the default in-memory store.
 func NewRateLimiter(max int, window time.Duration) *RateLimiter {
 	ctx, cancel := context.WithCancel(context.Background())
 	rl := &RateLimiter{
@@ -531,6 +570,40 @@ func NewRateLimiter(max int, window time.Duration) *RateLimiter {
 				return
 			case <-ticker.C:
 				rl.cleanup()
+			}
+		}
+	}()
+
+	return rl
+}
+
+// NewRateLimiterWithStore creates a new RateLimiter backed by the provided
+// store. Use this to plug in a distributed backend such as Redis.
+//
+// Example:
+//
+//	store := myredis.NewStore(redisClient)
+//	limiter := shield.NewRateLimiterWithStore(100, time.Minute, store)
+//	http.Handle("/", shield.New().WithRateLimiter(limiter).Handler(myHandler))
+func NewRateLimiterWithStore(max int, window time.Duration, store RateLimitStore) *RateLimiter {
+	ctx, cancel := context.WithCancel(context.Background())
+	rl := &RateLimiter{
+		max:         max,
+		window:      window,
+		customStore: store,
+		ctx:         ctx,
+		cancel:      cancel,
+	}
+
+	go func() {
+		ticker := time.NewTicker(window)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				store.Cleanup()
 			}
 		}
 	}()
@@ -561,6 +634,10 @@ func (rl *RateLimiter) Check(r *http.Request) RateLimitResult {
 
 // CheckKey checks rate limit for a specific key (useful for testing or custom keys).
 func (rl *RateLimiter) CheckKey(key string) RateLimitResult {
+	if rl.customStore != nil {
+		return rl.checkKeyWithStore(key)
+	}
+
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -595,12 +672,48 @@ func (rl *RateLimiter) CheckKey(key string) RateLimitResult {
 	}
 }
 
+// checkKeyWithStore checks rate limit using the pluggable external store.
+func (rl *RateLimiter) checkKeyWithStore(key string) RateLimitResult {
+	now := time.Now()
+
+	entry := rl.customStore.Get(key)
+	if entry == nil {
+		resetTime := now.Add(rl.window)
+		rl.customStore.Set(key, &RateLimitEntry{Count: 1, ResetTime: resetTime})
+		return RateLimitResult{
+			Allowed:   true,
+			Limit:     rl.max,
+			Remaining: rl.max - 1,
+			Reset:     rl.window,
+		}
+	}
+
+	count := rl.customStore.Increment(key)
+	remaining := rl.max - count
+	if remaining < 0 {
+		remaining = 0
+	}
+	reset := entry.ResetTime.Sub(now)
+
+	return RateLimitResult{
+		Allowed:   count <= rl.max,
+		Limit:     rl.max,
+		Remaining: remaining,
+		Reset:     reset,
+	}
+}
+
 // Close stops the cleanup goroutine and releases resources.
 func (rl *RateLimiter) Close() {
 	rl.cancel()
 }
 
 func (rl *RateLimiter) cleanup() {
+	if rl.customStore != nil {
+		rl.customStore.Cleanup()
+		return
+	}
+
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -661,9 +774,13 @@ func NewSecurityHeaders(config Config) *SecurityHeaders {
 	// X-Permitted-Cross-Domain-Policies
 	headers["X-Permitted-Cross-Domain-Policies"] = "none"
 
-	// Cache-Control headers to prevent caching of sensitive data
+	// Cache-Control headers
 	if config.CacheControl {
-		headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate"
+		cacheControlValue := config.CacheControlValue
+		if cacheControlValue == "" {
+			cacheControlValue = "no-store, no-cache, must-revalidate, proxy-revalidate"
+		}
+		headers["Cache-Control"] = cacheControlValue
 		headers["Pragma"] = "no-cache"
 		headers["Expires"] = "0"
 	}

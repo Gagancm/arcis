@@ -1,6 +1,6 @@
 /**
  * Shield - One-line security for Node.js apps
- * A cross-platform security library ("Framer Motion for Security")
+ * A cross-platform security library
  *
  * @module @shield/node
  * @version 1.0.0
@@ -104,8 +104,10 @@ export interface HeaderOptions {
   referrerPolicy?: string;
   /** Permissions-Policy value */
   permissionsPolicy?: string;
-  /** Enable cache-control headers to prevent caching. Default: true */
-  cacheControl?: boolean;
+  /** Enable cache-control headers to prevent caching. Default: true.
+   *  Pass a string to use a custom Cache-Control value.
+   *  e.g. `'public, max-age=3600'` for cacheable API responses. */
+  cacheControl?: boolean | string;
 }
 
 /** Safe logging configuration */
@@ -541,9 +543,12 @@ export function createHeaders(options: HeaderOptions = {}): RequestHandler {
     // Additional security headers
     res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
 
-    // Cache-Control headers to prevent caching of sensitive data
+    // Cache-Control headers
     if (cacheControl) {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      const cacheControlValue = typeof cacheControl === 'string'
+        ? cacheControl
+        : 'no-store, no-cache, must-revalidate, proxy-revalidate';
+      res.setHeader('Cache-Control', cacheControlValue);
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
     }

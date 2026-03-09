@@ -76,11 +76,11 @@ Notes:
 
 ---
 
-## The “big library” model (Framer Motion vs multi-language SDKs)
+## The “big library” model (single-language vs multi-language SDKs)
 
 There are two common scaling patterns:
 
-### Pattern A: One language, many frameworks (Framer Motion style)
+### Pattern A: One language, many frameworks
 
 This is “multi-framework in the same ecosystem” (e.g., React/Vue/Svelte in JS).
 
