@@ -1,0 +1,352 @@
+"""
+Shield Django Integration
+=========================
+
+Django middleware for Shield security.
+
+Usage:
+    # settings.py
+    MIDDLEWARE = [
+        'shield.django.ShieldMiddleware',
+        # ... other middleware
+    ]
+    
+    # Optional configuration in settings.py
+    SHIELD_CONFIG = {
+        'sanitize': True,
+        'sanitize_xss': True,
+        'sanitize_sql': True,
+        'sanitize_nosql': True,
+        'sanitize_path': True,
+        'rate_limit': True,
+        'rate_limit_max': 100,
+        'rate_limit_window_ms': 60000,
+        'headers': True,
+        'csp': None,
+        'is_dev': False,  # Set to True for development
+    }
+"""
+
+import json
+from typing import Callable, Optional, Dict, Any
+
+from django.conf import settings
+from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.utils.deprecation import MiddlewareMixin
+
+from .core import (
+    Sanitizer, 
+    RateLimiter, 
+    SecurityHeaders, 
+    RateLimitExceeded, 
+    InMemoryStore,
+    ErrorHandler,
+    SafeLogger,
+)
+
+
+def get_client_ip(request: HttpRequest) -> str:
+    """Extract client IP from Django request, handling proxies."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0].strip()
+    x_real_ip = request.META.get('HTTP_X_REAL_IP')
+    if x_real_ip:
+        return x_real_ip
+    return request.META.get('REMOTE_ADDR', 'unknown')
+
+
+class ShieldMiddleware(MiddlewareMixin):
+    """
+    Django middleware that provides XSS/SQL/NoSQL/Path sanitization,
+    rate limiting, security headers, and error handling.
+    
+    Usage:
+        # settings.py
+        MIDDLEWARE = [
+            'shield.django.ShieldMiddleware',
+            ...
+        ]
+        
+        # Optional: Configure Shield
+        SHIELD_CONFIG = {
+            'rate_limit_max': 50,
+            'sanitize_sql': False,  # Disable SQL sanitization
+            'is_dev': True,  # Show error details
+        }
+    """
+    
+    # Shared rate limiter store across all instances
+    _rate_limit_store = InMemoryStore()
+    _rate_limiter: Optional[RateLimiter] = None
+    
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
+        self.get_response = get_response
+        
+        # Load configuration from Django settings
+        config = getattr(settings, 'SHIELD_CONFIG', {})
+        
+        # Initialize sanitizer
+        sanitize_enabled = config.get('sanitize', True)
+        if sanitize_enabled:
+            self.sanitizer = Sanitizer(
+                xss=config.get('sanitize_xss', True),
+                sql=config.get('sanitize_sql', True),
+                nosql=config.get('sanitize_nosql', True),
+                path=config.get('sanitize_path', True),
+            )
+        else:
+            self.sanitizer = None
+        
+        # Initialize rate limiter (shared across instances)
+        rate_limit_enabled = config.get('rate_limit', True)
+        if rate_limit_enabled and ShieldMiddleware._rate_limiter is None:
+            ShieldMiddleware._rate_limiter = RateLimiter(
+                max_requests=config.get('rate_limit_max', 100),
+                window_ms=config.get('rate_limit_window_ms', 60000),
+                key_func=lambda req: get_client_ip(req),
+                store=self._rate_limit_store,
+            )
+        self.rate_limiter = ShieldMiddleware._rate_limiter if rate_limit_enabled else None
+        
+        # Initialize security headers
+        headers_enabled = config.get('headers', True)
+        if headers_enabled:
+            self.security_headers = SecurityHeaders(
+                content_security_policy=config.get('csp'),
+            )
+        else:
+            self.security_headers = None
+        
+        # Initialize error handler
+        error_handler_enabled = config.get('error_handler', True)
+        is_dev = config.get('is_dev', settings.DEBUG)
+        if error_handler_enabled:
+            self.error_handler = ErrorHandler(is_dev=is_dev)
+        else:
+            self.error_handler = None
+    
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        # Rate limiting check
+        rate_limit_info = None
+        if self.rate_limiter:
+            try:
+                rate_limit_info = self.rate_limiter.check(request)
+            except RateLimitExceeded as e:
+                response = JsonResponse(
+                    {'error': e.message, 'retry_after': e.retry_after},
+                    status=429
+                )
+                response['Retry-After'] = str(e.retry_after)
+                return response
+        
+        # Sanitize request body for POST/PUT/PATCH with JSON
+        if self.sanitizer and request.method in ('POST', 'PUT', 'PATCH'):
+            content_type = request.content_type or ''
+            if 'application/json' in content_type:
+                try:
+                    body = json.loads(request.body.decode('utf-8'))
+                    request._shield_sanitized_body = self.sanitizer(body)
+                    # Also accessible as request.shield_json
+                    request.shield_json = request._shield_sanitized_body
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+        
+        # Process request
+        try:
+            response = self.get_response(request)
+        except Exception as e:
+            if self.error_handler:
+                error_response = self.error_handler.handle(e, 500)
+                response = JsonResponse(error_response, status=500)
+            else:
+                raise
+        
+        # Add security headers
+        if self.security_headers:
+            for header, value in self.security_headers.get_headers().items():
+                response[header] = value
+        
+        # Add rate limit headers
+        if rate_limit_info:
+            response['X-RateLimit-Limit'] = str(rate_limit_info['limit'])
+            response['X-RateLimit-Remaining'] = str(rate_limit_info['remaining'])
+            response['X-RateLimit-Reset'] = str(rate_limit_info['reset'])
+        
+        # Remove fingerprinting headers
+        if 'Server' in response:
+            del response['Server']
+        if 'X-Powered-By' in response:
+            del response['X-Powered-By']
+        
+        return response
+
+
+def get_sanitized_body(request: HttpRequest) -> Optional[Dict[str, Any]]:
+    """
+    Get the sanitized request body from a Django request.
+    
+    Usage:
+        from shield.django import get_sanitized_body
+        
+        def my_view(request):
+            data = get_sanitized_body(request)
+            # data is sanitized
+    """
+    return getattr(request, '_shield_sanitized_body', None)
+
+
+def get_json(request: HttpRequest) -> Optional[Dict[str, Any]]:
+    """
+    Alias for get_sanitized_body - more intuitive name.
+    
+    Usage:
+        from shield.django import get_json
+        
+        def my_view(request):
+            data = get_json(request)
+            # data is sanitized
+    """
+    return get_sanitized_body(request)
+
+
+class ShieldSanitizeMiddleware(MiddlewareMixin):
+    """
+    Standalone sanitization middleware for Django.
+    Use this if you only want sanitization without rate limiting.
+    
+    Usage:
+        MIDDLEWARE = [
+            'shield.django.ShieldSanitizeMiddleware',
+            ...
+        ]
+    """
+    
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
+        self.get_response = get_response
+        config = getattr(settings, 'SHIELD_CONFIG', {})
+        self.sanitizer = Sanitizer(
+            xss=config.get('sanitize_xss', True),
+            sql=config.get('sanitize_sql', True),
+            nosql=config.get('sanitize_nosql', True),
+            path=config.get('sanitize_path', True),
+        )
+    
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        if request.method in ('POST', 'PUT', 'PATCH'):
+            content_type = request.content_type or ''
+            if 'application/json' in content_type:
+                try:
+                    body = json.loads(request.body.decode('utf-8'))
+                    request._shield_sanitized_body = self.sanitizer(body)
+                    request.shield_json = request._shield_sanitized_body
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+        
+        return self.get_response(request)
+
+
+class ShieldRateLimitMiddleware(MiddlewareMixin):
+    """
+    Standalone rate limiting middleware for Django.
+    
+    Usage:
+        MIDDLEWARE = [
+            'shield.django.ShieldRateLimitMiddleware',
+            ...
+        ]
+    """
+    
+    _store = InMemoryStore()
+    _rate_limiter: Optional[RateLimiter] = None
+    
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
+        self.get_response = get_response
+        config = getattr(settings, 'SHIELD_CONFIG', {})
+        
+        if ShieldRateLimitMiddleware._rate_limiter is None:
+            ShieldRateLimitMiddleware._rate_limiter = RateLimiter(
+                max_requests=config.get('rate_limit_max', 100),
+                window_ms=config.get('rate_limit_window_ms', 60000),
+                key_func=lambda req: get_client_ip(req),
+                store=self._store,
+            )
+        self.rate_limiter = ShieldRateLimitMiddleware._rate_limiter
+    
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        try:
+            rate_limit_info = self.rate_limiter.check(request)
+        except RateLimitExceeded as e:
+            response = JsonResponse(
+                {'error': e.message, 'retry_after': e.retry_after},
+                status=429
+            )
+            response['Retry-After'] = str(e.retry_after)
+            return response
+        
+        response = self.get_response(request)
+        
+        response['X-RateLimit-Limit'] = str(rate_limit_info['limit'])
+        response['X-RateLimit-Remaining'] = str(rate_limit_info['remaining'])
+        response['X-RateLimit-Reset'] = str(rate_limit_info['reset'])
+        
+        return response
+
+
+class ShieldHeadersMiddleware(MiddlewareMixin):
+    """
+    Standalone security headers middleware for Django.
+    
+    Usage:
+        MIDDLEWARE = [
+            'shield.django.ShieldHeadersMiddleware',
+            ...
+        ]
+    """
+    
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
+        self.get_response = get_response
+        config = getattr(settings, 'SHIELD_CONFIG', {})
+        self.security_headers = SecurityHeaders(
+            content_security_policy=config.get('csp'),
+        )
+    
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        
+        for header, value in self.security_headers.get_headers().items():
+            response[header] = value
+        
+        # Remove fingerprinting headers
+        if 'Server' in response:
+            del response['Server']
+        if 'X-Powered-By' in response:
+            del response['X-Powered-By']
+        
+        return response
+
+
+class ShieldErrorMiddleware(MiddlewareMixin):
+    """
+    Standalone error handling middleware for Django.
+    Hides error details in production.
+    
+    Usage:
+        MIDDLEWARE = [
+            'shield.django.ShieldErrorMiddleware',
+            ...
+        ]
+    """
+    
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
+        self.get_response = get_response
+        config = getattr(settings, 'SHIELD_CONFIG', {})
+        is_dev = config.get('is_dev', settings.DEBUG)
+        self.error_handler = ErrorHandler(is_dev=is_dev)
+    
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        try:
+            return self.get_response(request)
+        except Exception as e:
+            error_response = self.error_handler.handle(e, 500)
+            return JsonResponse(error_response, status=500)

@@ -1,0 +1,561 @@
+"""
+Shield FastAPI Integration
+
+Includes both sync and async rate limiters for FastAPI applications.
+"""
+
+import time
+import asyncio
+from typing import Callable, Optional, Dict, Any, Protocol
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response, JSONResponse
+
+from .core import (
+    Sanitizer, 
+    RateLimiter, 
+    RateLimitEntry,
+    SecurityHeaders, 
+    RateLimitExceeded,
+    ErrorHandler,
+)
+
+
+# ============================================================================
+# ASYNC RATE LIMITER STORE PROTOCOL
+# ============================================================================
+
+class AsyncRateLimitStore(Protocol):
+    """Protocol for async rate limit stores (e.g., Redis with aioredis)."""
+    
+    async def get(self, key: str) -> Optional[RateLimitEntry]:
+        """Get rate limit entry for a key."""
+        ...
+    
+    async def set(self, key: str, count: int, reset_time: float) -> None:
+        """Set rate limit entry for a key."""
+        ...
+    
+    async def increment(self, key: str) -> int:
+        """Increment count for a key and return new count."""
+        ...
+    
+    async def cleanup(self) -> None:
+        """Remove expired entries."""
+        ...
+    
+    async def close(self) -> None:
+        """Close the store and release resources."""
+        ...
+
+
+# ============================================================================
+# ASYNC IN-MEMORY STORE
+# ============================================================================
+
+class AsyncInMemoryStore:
+    """
+    Async-safe in-memory store for rate limiting.
+    
+    Uses asyncio.Lock for thread safety in async context.
+    Suitable for single-instance deployments with async frameworks.
+    """
+    
+    def __init__(self):
+        self._store: Dict[str, RateLimitEntry] = {}
+        self._lock = asyncio.Lock()
+        self._closed = False
+        self._cleanup_task: Optional[asyncio.Task] = None
+    
+    async def get(self, key: str) -> Optional[RateLimitEntry]:
+        """Get rate limit entry for a key."""
+        async with self._lock:
+            entry = self._store.get(key)
+            if entry and entry.reset_time < time.time():
+                del self._store[key]
+                return None
+            return entry
+    
+    async def set(self, key: str, count: int, reset_time: float) -> None:
+        """Set rate limit entry for a key."""
+        async with self._lock:
+            self._store[key] = RateLimitEntry(count=count, reset_time=reset_time)
+    
+    async def increment(self, key: str) -> int:
+        """Increment count for a key."""
+        async with self._lock:
+            entry = self._store.get(key)
+            if entry:
+                entry.count += 1
+                return entry.count
+            return 1
+    
+    async def cleanup(self) -> None:
+        """Remove expired entries."""
+        async with self._lock:
+            now = time.time()
+            expired = [k for k, v in self._store.items() if v.reset_time < now]
+            for k in expired:
+                del self._store[k]
+    
+    async def clear(self) -> None:
+        """Clear all entries."""
+        async with self._lock:
+            self._store.clear()
+    
+    async def close(self) -> None:
+        """Mark store as closed and cancel cleanup task."""
+        self._closed = True
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        await self.clear()
+
+
+# ============================================================================
+# ASYNC RATE LIMITER
+# ============================================================================
+
+class AsyncRateLimitExceeded(Exception):
+    """Exception raised when async rate limit is exceeded."""
+    
+    def __init__(self, message: str = "Rate limit exceeded", retry_after: int = 0):
+        self.message = message
+        self.retry_after = retry_after
+        super().__init__(self.message)
+
+
+class AsyncRateLimiter:
+    """
+    Async rate limiter for FastAPI and other async frameworks.
+    
+    Uses asyncio-native locking and supports pluggable async stores
+    (e.g., aioredis for distributed rate limiting).
+    
+    Example:
+        limiter = AsyncRateLimiter(max_requests=100, window_ms=60000)
+        
+        # In middleware or dependency
+        result = await limiter.check(request)
+        
+        # With custom async store (e.g., Redis)
+        from shield.examples.redis_store import AsyncRedisRateLimitStore
+        import redis.asyncio as redis
+        
+        redis_client = redis.Redis()
+        store = AsyncRedisRateLimitStore(redis_client)
+        limiter = AsyncRateLimiter(store=store)
+    """
+    
+    def __init__(
+        self,
+        max_requests: int = 100,
+        window_ms: int = 60000,
+        message: str = "Too many requests, please try again later.",
+        key_func: Optional[Callable] = None,
+        skip_func: Optional[Callable] = None,
+        store: Optional[AsyncRateLimitStore] = None,
+    ):
+        self.max_requests = max_requests
+        self.window_seconds = window_ms / 1000
+        self.window_ms = window_ms
+        self.message = message
+        self.key_func = key_func or self._default_key_func
+        self.skip_func = skip_func
+        self._closed = False
+        
+        # Use provided store or create async in-memory store
+        self._store_provided = store is not None
+        self.store = store or AsyncInMemoryStore()
+        
+        # Cleanup task for in-memory store
+        self._cleanup_task: Optional[asyncio.Task] = None
+    
+    def _default_key_func(self, request: Request) -> str:
+        """Default key function - uses client IP address."""
+        # FastAPI/Starlette
+        if hasattr(request, 'client') and request.client:
+            return request.client.host or "unknown"
+        
+        # Check forwarded headers
+        forwarded = request.headers.get('x-forwarded-for')
+        if forwarded:
+            return forwarded.split(',')[0].strip()
+        
+        real_ip = request.headers.get('x-real-ip')
+        if real_ip:
+            return real_ip
+        
+        return "unknown"
+    
+    async def _start_cleanup(self) -> None:
+        """Start background cleanup task for in-memory store."""
+        if self._store_provided:
+            return  # External stores handle their own cleanup
+        
+        async def cleanup_loop():
+            while not self._closed:
+                try:
+                    await asyncio.sleep(self.window_seconds)
+                    if not self._closed:
+                        await self.store.cleanup()
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    print(f"[Shield Async Rate Limiter] Cleanup error: {e}")
+        
+        self._cleanup_task = asyncio.create_task(cleanup_loop())
+    
+    async def check(self, request: Request) -> Dict[str, Any]:
+        """
+        Check if request is within rate limit.
+        
+        Returns dict with limit info and raises AsyncRateLimitExceeded if exceeded.
+        
+        Args:
+            request: The FastAPI/Starlette request
+            
+        Returns:
+            Dict with keys: allowed, limit, remaining, reset
+            
+        Raises:
+            AsyncRateLimitExceeded: If rate limit is exceeded
+        """
+        if self._closed:
+            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests}
+        
+        # Start cleanup task if not already running
+        if self._cleanup_task is None and not self._store_provided:
+            await self._start_cleanup()
+        
+        # Check skip function
+        if self.skip_func:
+            should_skip = self.skip_func(request)
+            if asyncio.iscoroutine(should_skip):
+                should_skip = await should_skip
+            if should_skip:
+                return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests}
+        
+        key = self.key_func(request)
+        now = time.time()
+        now_ms = now * 1000
+        
+        entry = await self.store.get(key)
+        
+        if not entry or entry.reset_time < now:
+            # New window
+            reset_time = now + self.window_seconds
+            await self.store.set(key, 1, reset_time)
+            return {
+                "allowed": True,
+                "limit": self.max_requests,
+                "remaining": self.max_requests - 1,
+                "reset": int(self.window_seconds),
+            }
+        
+        count = await self.store.increment(key)
+        remaining = max(0, self.max_requests - count)
+        reset = int(entry.reset_time - now)
+        
+        if count > self.max_requests:
+            raise AsyncRateLimitExceeded(self.message, max(0, reset))
+        
+        return {
+            "allowed": True,
+            "limit": self.max_requests,
+            "remaining": remaining,
+            "reset": max(0, reset),
+        }
+    
+    async def close(self) -> None:
+        """Stop cleanup task and release resources."""
+        if self._closed:
+            return
+        self._closed = True
+        
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        
+        await self.store.close()
+
+
+# ============================================================================
+# SHIELD MIDDLEWARE (UPDATED WITH ASYNC SUPPORT)
+# ============================================================================
+
+class ShieldMiddleware(BaseHTTPMiddleware):
+    """
+    FastAPI/Starlette middleware for Shield security.
+    
+    Now supports both sync and async rate limiters.
+    
+    Usage:
+        from fastapi import FastAPI
+        from shield.fastapi import ShieldMiddleware
+        
+        app = FastAPI()
+        app.add_middleware(ShieldMiddleware)
+        
+        # With async rate limiter (default for new installations):
+        app.add_middleware(
+            ShieldMiddleware,
+            use_async_rate_limiter=True,
+            rate_limit_max=100,
+        )
+        
+        # With custom async store (e.g., Redis):
+        from shield.examples.redis_store import AsyncRedisRateLimitStore
+        import redis.asyncio as redis
+        
+        redis_client = redis.Redis()
+        async_store = AsyncRedisRateLimitStore(redis_client)
+        
+        app.add_middleware(
+            ShieldMiddleware,
+            async_rate_limiter=AsyncRateLimiter(store=async_store),
+        )
+    """
+    
+    def __init__(
+        self,
+        app,
+        # Sanitizer options
+        sanitize: bool = True,
+        sanitize_xss: bool = True,
+        sanitize_sql: bool = True,
+        sanitize_nosql: bool = True,
+        sanitize_path: bool = True,
+        # Rate limiter options
+        rate_limit: bool = True,
+        rate_limit_max: int = 100,
+        rate_limit_window_ms: int = 60000,
+        use_async_rate_limiter: bool = True,  # NEW: default to async
+        # Security headers options
+        headers: bool = True,
+        csp: Optional[str] = None,
+        # Error handler options
+        error_handling: bool = True,
+        is_dev: bool = False,
+        # Pre-built components (for Shield class)
+        sanitizer: Optional[Sanitizer] = None,
+        rate_limiter: Optional[RateLimiter] = None,
+        async_rate_limiter: Optional[AsyncRateLimiter] = None,  # NEW
+        security_headers: Optional[SecurityHeaders] = None,
+        error_handler: Optional[ErrorHandler] = None,
+    ):
+        super().__init__(app)
+        
+        self.sanitizer = sanitizer or (Sanitizer(
+            xss=sanitize_xss,
+            sql=sanitize_sql,
+            nosql=sanitize_nosql,
+            path=sanitize_path,
+        ) if sanitize else None)
+        
+        # Determine which rate limiter to use
+        self.async_rate_limiter = None
+        self.rate_limiter = None
+        
+        if async_rate_limiter:
+            self.async_rate_limiter = async_rate_limiter
+        elif rate_limiter:
+            self.rate_limiter = rate_limiter
+        elif rate_limit:
+            if use_async_rate_limiter:
+                self.async_rate_limiter = AsyncRateLimiter(
+                    max_requests=rate_limit_max,
+                    window_ms=rate_limit_window_ms,
+                )
+            else:
+                self.rate_limiter = RateLimiter(
+                    max_requests=rate_limit_max,
+                    window_ms=rate_limit_window_ms,
+                )
+        
+        self.security_headers = security_headers or (SecurityHeaders(
+            content_security_policy=csp,
+        ) if headers else None)
+        
+        self.error_handler = error_handler or (ErrorHandler(
+            is_dev=is_dev,
+        ) if error_handling else None)
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Rate limiting (async or sync)
+        rate_limit_info = None
+        
+        if self.async_rate_limiter:
+            try:
+                rate_limit_info = await self.async_rate_limiter.check(request)
+            except AsyncRateLimitExceeded as e:
+                response = JSONResponse(
+                    content={"error": e.message, "retry_after": e.retry_after},
+                    status_code=429,
+                )
+                response.headers["Retry-After"] = str(e.retry_after)
+                return response
+        elif self.rate_limiter:
+            try:
+                rate_limit_info = self.rate_limiter.check(request)
+            except RateLimitExceeded as e:
+                response = JSONResponse(
+                    content={"error": e.message, "retry_after": e.retry_after},
+                    status_code=429,
+                )
+                response.headers["Retry-After"] = str(e.retry_after)
+                return response
+        
+        # Store sanitized body in request state if JSON
+        if self.sanitizer:
+            content_type = request.headers.get("content-type", "")
+            if "application/json" in content_type:
+                try:
+                    body = await request.json()
+                    request.state.sanitized_body = self.sanitizer(body)
+                    request.state.json = request.state.sanitized_body
+                except Exception:
+                    pass
+        
+        # Process request with error handling
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            if self.error_handler:
+                status_code = getattr(e, 'status_code', 500) or 500
+                error_response = self.error_handler.handle(e, status_code)
+                response = JSONResponse(content=error_response, status_code=status_code)
+            else:
+                raise
+        
+        # Add security headers
+        if self.security_headers:
+            for header, value in self.security_headers.get_headers().items():
+                response.headers[header] = value
+        
+        # Add rate limit headers
+        if rate_limit_info:
+            response.headers["X-RateLimit-Limit"] = str(rate_limit_info["limit"])
+            response.headers["X-RateLimit-Remaining"] = str(rate_limit_info["remaining"])
+            response.headers["X-RateLimit-Reset"] = str(rate_limit_info["reset"])
+        
+        # Remove fingerprinting headers
+        if "server" in response.headers:
+            del response.headers["server"]
+        
+        return response
+
+
+# ============================================================================
+# DEPENDENCIES
+# ============================================================================
+
+def get_sanitized_body(request: Request) -> Optional[Dict[str, Any]]:
+    """
+    Dependency to get sanitized request body in FastAPI.
+    
+    Usage:
+        from fastapi import Depends
+        from shield.fastapi import get_sanitized_body
+        
+        @app.post("/users")
+        async def create_user(body: dict = Depends(get_sanitized_body)):
+            # body is already sanitized
+            pass
+    """
+    return getattr(request.state, "sanitized_body", None)
+
+
+def get_json(request: Request) -> Optional[Dict[str, Any]]:
+    """
+    Alias for get_sanitized_body - more intuitive name.
+    
+    Usage:
+        from fastapi import Depends
+        from shield.fastapi import get_json
+        
+        @app.post("/users")
+        async def create_user(data: dict = Depends(get_json)):
+            # data is already sanitized
+            pass
+    """
+    return get_sanitized_body(request)
+
+
+async def get_rate_limit_info(request: Request) -> Optional[Dict[str, Any]]:
+    """
+    Dependency to get rate limit info for the current request.
+    
+    Usage:
+        from fastapi import Depends
+        from shield.fastapi import get_rate_limit_info
+        
+        @app.get("/status")
+        async def status(rate_info: dict = Depends(get_rate_limit_info)):
+            return {"requests_remaining": rate_info.get("remaining")}
+    """
+    return getattr(request.state, "rate_limit_info", None)
+
+
+# ============================================================================
+# STANDALONE ASYNC RATE LIMIT DEPENDENCY
+# ============================================================================
+
+def create_rate_limit_dependency(
+    max_requests: int = 100,
+    window_ms: int = 60000,
+    key_func: Optional[Callable] = None,
+    skip_func: Optional[Callable] = None,
+    store: Optional[AsyncRateLimitStore] = None,
+):
+    """
+    Create a FastAPI dependency for rate limiting.
+    
+    Useful when you want per-route rate limiting instead of global middleware.
+    
+    Usage:
+        from fastapi import Depends
+        from shield.fastapi import create_rate_limit_dependency
+        
+        # Global rate limiter
+        rate_limit = create_rate_limit_dependency(max_requests=100)
+        
+        # Strict rate limiter for sensitive endpoints
+        strict_rate_limit = create_rate_limit_dependency(max_requests=10, window_ms=60000)
+        
+        @app.post("/login", dependencies=[Depends(strict_rate_limit)])
+        async def login():
+            pass
+        
+        @app.get("/data", dependencies=[Depends(rate_limit)])
+        async def get_data():
+            pass
+    """
+    limiter = AsyncRateLimiter(
+        max_requests=max_requests,
+        window_ms=window_ms,
+        key_func=key_func,
+        skip_func=skip_func,
+        store=store,
+    )
+    
+    async def rate_limit_dependency(request: Request):
+        try:
+            info = await limiter.check(request)
+            request.state.rate_limit_info = info
+            return info
+        except AsyncRateLimitExceeded as e:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=429,
+                detail={"error": e.message, "retry_after": e.retry_after},
+                headers={"Retry-After": str(e.retry_after)},
+            )
+    
+    return rate_limit_dependency

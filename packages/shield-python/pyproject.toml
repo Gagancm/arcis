@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shield-security"
+version = "1.0.0"
+description = "One-line security for Python web applications"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your@email.com"}
+]
+keywords = ["security", "xss", "sql-injection", "rate-limiting", "flask", "fastapi", "django"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: Flask",
+    "Framework :: FastAPI",
+    "Framework :: Django",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Middleware",
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+flask = ["flask>=2.0.0"]
+fastapi = ["fastapi>=0.68.0", "starlette>=0.14.0"]
+django = ["django>=3.2"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "flask>=2.0.0",
+    "fastapi>=0.68.0",
+    "httpx>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/aspect.dev/shield"
+Documentation = "https://shield.aspect.dev"
+Repository = "https://github.com/aspect.dev/shield"
+Issues = "https://github.com/aspect.dev/shield/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shield*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true

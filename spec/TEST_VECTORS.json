@@ -1,0 +1,312 @@
+{
+  "version": "1.0",
+  "description": "Test vectors for ShieldJS implementations. All implementations must pass these tests.",
+  
+  "sanitize_string": {
+    "xss": [
+      {
+        "input": "<script>alert('xss')</script>",
+        "expected_behavior": "must not contain '<script>'",
+        "expected_contains": "&lt;"
+      },
+      {
+        "input": "<img onerror=\"alert(1)\" src=\"x\">",
+        "expected_behavior": "must not contain 'onerror'"
+      },
+      {
+        "input": "javascript:alert(1)",
+        "expected_behavior": "must not contain 'javascript:' (case insensitive)"
+      },
+      {
+        "input": "<iframe src=\"evil.com\">",
+        "expected_behavior": "must not contain '<iframe'"
+      },
+      {
+        "input": "Hello <b>World</b>",
+        "expected_behavior": "must encode < and > as &lt; and &gt;"
+      },
+      {
+        "input": "data:text/html,<script>alert(1)</script>",
+        "expected_behavior": "must not contain 'data:'"
+      }
+    ],
+    
+    "sql": [
+      {
+        "input": "'; DROP TABLE users; --",
+        "expected_behavior": "must not contain 'DROP' (case insensitive)"
+      },
+      {
+        "input": "1 OR 1=1",
+        "expected_behavior": "must not contain 'OR 1' pattern"
+      },
+      {
+        "input": "SELECT * FROM users",
+        "expected_behavior": "must not contain 'SELECT' (case insensitive)"
+      },
+      {
+        "input": "1; DELETE FROM users",
+        "expected_behavior": "must not contain 'DELETE' (case insensitive)"
+      },
+      {
+        "input": "admin'--",
+        "expected_behavior": "must not contain '--'"
+      },
+      {
+        "input": "1 /* comment */ UNION SELECT",
+        "expected_behavior": "must not contain 'UNION' or '/*'"
+      }
+    ],
+    
+    "path_traversal": [
+      {
+        "input": "../../etc/passwd",
+        "expected_behavior": "must not contain '../'"
+      },
+      {
+        "input": "..\\..\\windows\\system32",
+        "expected_behavior": "must not contain '..\\'"
+      },
+      {
+        "input": "%2e%2e%2f%2e%2e%2f",
+        "expected_behavior": "must not contain '%2e%2e' (case insensitive)"
+      },
+      {
+        "input": "file.txt",
+        "expected_output": "file.txt",
+        "comment": "Safe input should pass through unchanged"
+      }
+    ]
+  },
+  
+  "sanitize_object": {
+    "prototype_pollution": [
+      {
+        "input": {"__proto__": {"admin": true}, "name": "test"},
+        "expected_behavior": "result must not have '__proto__' key",
+        "expected_has_key": "name"
+      },
+      {
+        "input": {"constructor": {"prototype": {}}, "email": "test@test.com"},
+        "expected_behavior": "result must not have 'constructor' key",
+        "expected_has_key": "email"
+      },
+      {
+        "input": {"prototype": {"isAdmin": true}, "value": 123},
+        "expected_behavior": "result must not have 'prototype' key",
+        "expected_has_key": "value"
+      }
+    ],
+    
+    "nosql_injection": [
+      {
+        "input": {"$gt": "", "name": "test"},
+        "expected_behavior": "result must not have '$gt' key",
+        "expected_has_key": "name"
+      },
+      {
+        "input": {"$where": "function(){ return true; }", "id": 1},
+        "expected_behavior": "result must not have '$where' key",
+        "expected_has_key": "id"
+      },
+      {
+        "input": {"$ne": null, "$or": [], "valid": true},
+        "expected_behavior": "result must not have '$ne' or '$or' keys",
+        "expected_has_key": "valid"
+      },
+      {
+        "input": {"username": {"$regex": ".*"}, "password": "test"},
+        "expected_behavior": "nested objects with $ keys should also be checked"
+      }
+    ],
+    
+    "nested_objects": [
+      {
+        "input": {"user": {"name": "<script>xss</script>"}},
+        "expected_behavior": "nested string values must be sanitized"
+      },
+      {
+        "input": {"items": ["<script>alert(1)</script>", "normal"]},
+        "expected_behavior": "array items must be sanitized"
+      }
+    ]
+  },
+  
+  "rate_limiter": {
+    "scenarios": [
+      {
+        "name": "allow_under_limit",
+        "config": {"max": 5, "windowMs": 60000},
+        "requests": 3,
+        "same_ip": true,
+        "expected_status": 200,
+        "expected_header": "X-RateLimit-Remaining"
+      },
+      {
+        "name": "block_over_limit",
+        "config": {"max": 3, "windowMs": 60000},
+        "requests": 5,
+        "same_ip": true,
+        "expected_status_after_limit": 429,
+        "expected_error_key": "error"
+      },
+      {
+        "name": "different_ips_separate_limits",
+        "config": {"max": 2, "windowMs": 60000},
+        "requests_per_ip": 2,
+        "num_ips": 3,
+        "expected_all_pass": true
+      }
+    ],
+    
+    "required_headers": [
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining", 
+      "X-RateLimit-Reset"
+    ]
+  },
+  
+  "security_headers": {
+    "required_headers_default": {
+      "Content-Security-Policy": "must be set",
+      "X-XSS-Protection": "1; mode=block",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Strict-Transport-Security": "must contain 'max-age='",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "must be set"
+    },
+    
+    "removed_headers": [
+      "X-Powered-By"
+    ]
+  },
+  
+  "validator": {
+    "required_field": [
+      {
+        "schema": {"email": {"type": "email", "required": true}},
+        "input": {},
+        "expected_status": 400,
+        "expected_error_contains": "email is required"
+      }
+    ],
+    
+    "email_validation": [
+      {
+        "schema": {"email": {"type": "email", "required": true}},
+        "input": {"email": "invalid"},
+        "expected_status": 400,
+        "expected_error_contains": "valid email"
+      },
+      {
+        "schema": {"email": {"type": "email", "required": true}},
+        "input": {"email": "test@example.com"},
+        "expected_status": 200
+      }
+    ],
+    
+    "string_length": [
+      {
+        "schema": {"name": {"type": "string", "min": 3, "max": 10}},
+        "input": {"name": "ab"},
+        "expected_status": 400,
+        "expected_error_contains": "at least 3"
+      },
+      {
+        "schema": {"name": {"type": "string", "min": 3, "max": 10}},
+        "input": {"name": "this is way too long"},
+        "expected_status": 400,
+        "expected_error_contains": "at most 10"
+      }
+    ],
+    
+    "number_range": [
+      {
+        "schema": {"age": {"type": "number", "min": 0, "max": 150}},
+        "input": {"age": -5},
+        "expected_status": 400,
+        "expected_error_contains": "at least 0"
+      },
+      {
+        "schema": {"age": {"type": "number", "min": 0, "max": 150}},
+        "input": {"age": 200},
+        "expected_status": 400,
+        "expected_error_contains": "at most 150"
+      }
+    ],
+    
+    "enum_validation": [
+      {
+        "schema": {"role": {"type": "string", "enum": ["user", "admin"]}},
+        "input": {"role": "superadmin"},
+        "expected_status": 400,
+        "expected_error_contains": "one of"
+      }
+    ],
+    
+    "mass_assignment_prevention": [
+      {
+        "schema": {"email": {"type": "email", "required": true}},
+        "input": {"email": "test@test.com", "isAdmin": true, "role": "admin"},
+        "expected_status": 200,
+        "expected_output_keys": ["email"],
+        "expected_missing_keys": ["isAdmin", "role"]
+      }
+    ]
+  },
+  
+  "safe_logger": {
+    "redaction": [
+      {
+        "input_data": {"email": "test@test.com", "password": "secret123"},
+        "expected_redacted_keys": ["password"],
+        "expected_visible_keys": ["email"]
+      },
+      {
+        "input_data": {"user": "john", "token": "abc123", "apiKey": "key123"},
+        "expected_redacted_keys": ["token", "apiKey"],
+        "expected_visible_keys": ["user"]
+      }
+    ],
+    
+    "log_injection_prevention": [
+      {
+        "input_message": "User: attacker\nAdmin logged in: true",
+        "expected_behavior": "must not contain newline character in output"
+      },
+      {
+        "input_message": "Normal log\r\nFake entry",
+        "expected_behavior": "must not contain carriage return or newline"
+      }
+    ],
+    
+    "truncation": [
+      {
+        "config": {"maxLength": 50},
+        "input_message": "a]repeated 100 times",
+        "expected_behavior": "output length must be less than 100",
+        "expected_contains": "[TRUNCATED]"
+      }
+    ]
+  },
+  
+  "error_handler": {
+    "production_mode": [
+      {
+        "isDev": false,
+        "error": {"message": "Database connection failed", "stack": "at db.connect..."},
+        "expected_response_contains": "Internal Server Error",
+        "expected_response_not_contains": ["stack", "Database"]
+      }
+    ],
+    
+    "development_mode": [
+      {
+        "isDev": true,
+        "error": {"message": "Something broke", "stack": "at function..."},
+        "expected_response_contains": "Something broke"
+      }
+    ]
+  }
+}
