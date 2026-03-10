@@ -1,2 +1,77 @@
-arcis\packages\arcis-node\node_modules
-node_modules
+# ─── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+*.js.map
+*.d.ts.map
+.npm
+
+# ─── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+site-packages/
+*.whl
+
+# ─── Test / Coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.lcov
+.nyc_output/
+
+# ─── Go ────────────────────────────────────────────────────────────────────────
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# ─── C# / .NET ─────────────────────────────────────────────────────────────────
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.nupkg
+**/packages/repositories.config
+
+# ─── Java / Maven / Gradle ─────────────────────────────────────────────────────
+target/
+.gradle/
+build/
+*.class
+*.jar
+*.war
+
+# ─── IDE / OS ──────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Secrets / Env ─────────────────────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets.json
