@@ -1,0 +1,144 @@
+/**
+ * @module @arcis/node/middleware/rate-limit
+ * Rate limiting middleware
+ */
+
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import { RATE_LIMIT } from '../core/constants';
+import type { RateLimitOptions, RateLimiterMiddleware, RateLimitEntry } from '../core/types';
+
+/** In-memory rate limit store */
+interface InMemoryRateLimitStore {
+  [key: string]: RateLimitEntry;
+}
+
+/**
+ * Create Express middleware for rate limiting.
+ * 
+ * @param options - Rate limit configuration
+ * @returns Express middleware with cleanup method
+ * 
+ * @example
+ * app.use(createRateLimiter({ max: 100, windowMs: 60000 }));
+ * 
+ * @example
+ * // Skip rate limiting for certain routes
+ * app.use(createRateLimiter({
+ *   max: 50,
+ *   skip: (req) => req.path === '/health'
+ * }));
+ * 
+ * @example
+ * // Cleanup on shutdown
+ * const limiter = createRateLimiter();
+ * app.use(limiter);
+ * process.on('SIGTERM', () => limiter.close());
+ */
+export function createRateLimiter(options: RateLimitOptions = {}): RateLimiterMiddleware {
+  const {
+    max = RATE_LIMIT.DEFAULT_MAX_REQUESTS,
+    windowMs = RATE_LIMIT.DEFAULT_WINDOW_MS,
+    message = RATE_LIMIT.DEFAULT_MESSAGE,
+    statusCode = RATE_LIMIT.DEFAULT_STATUS_CODE,
+    keyGenerator = (req) => req.ip || req.socket?.remoteAddress || 'unknown',
+    skip,
+    store: externalStore,
+  } = options;
+
+  const inMemoryStore: InMemoryRateLimitStore = {};
+
+  // Cleanup interval for in-memory store (only create if not using external store)
+  let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  
+  if (!externalStore) {
+    cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const key of Object.keys(inMemoryStore)) {
+        if (inMemoryStore[key].resetTime < now) {
+          delete inMemoryStore[key];
+        }
+      }
+    }, windowMs);
+
+    // Prevent interval from keeping the process alive (Node.js only)
+    if (typeof cleanupInterval.unref === 'function') {
+      cleanupInterval.unref();
+    }
+  }
+
+  const handler: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (skip?.(req)) {
+        return next();
+      }
+
+      const key = keyGenerator(req);
+      const now = Date.now();
+
+      let count: number;
+      let resetTime: number;
+
+      if (externalStore) {
+        // Use external store (e.g., Redis)
+        const entry = await externalStore.get(key);
+        if (!entry || entry.resetTime < now) {
+          await externalStore.set(key, { count: 1, resetTime: now + windowMs });
+          count = 1;
+          resetTime = now + windowMs;
+        } else {
+          count = await externalStore.increment(key);
+          resetTime = entry.resetTime;
+        }
+      } else {
+        // Use in-memory store
+        if (!inMemoryStore[key] || inMemoryStore[key].resetTime < now) {
+          inMemoryStore[key] = { count: 1, resetTime: now + windowMs };
+        } else {
+          inMemoryStore[key].count++;
+        }
+        count = inMemoryStore[key].count;
+        resetTime = inMemoryStore[key].resetTime;
+      }
+
+      const remaining = Math.max(0, max - count);
+      const resetSeconds = Math.ceil((resetTime - now) / 1000);
+
+      // Set rate limit headers
+      res.setHeader('X-RateLimit-Limit', max.toString());
+      res.setHeader('X-RateLimit-Remaining', remaining.toString());
+      res.setHeader('X-RateLimit-Reset', resetSeconds.toString());
+
+      if (count > max) {
+        res.setHeader('Retry-After', resetSeconds.toString());
+        res.status(statusCode).json({
+          error: message,
+          retryAfter: resetSeconds,
+        });
+        return;
+      }
+
+      next();
+    } catch (error) {
+      // Log error but fail open (allow request through) to prevent DoS
+      console.error('[arcis] Rate limiter error:', error);
+      next();
+    }
+  };
+
+  // Attach close method for cleanup
+  const middleware = handler as RateLimiterMiddleware;
+  middleware.close = () => {
+    if (cleanupInterval) {
+      clearInterval(cleanupInterval);
+      cleanupInterval = null;
+    }
+  };
+
+  return middleware;
+}
+
+/**
+ * Alias for createRateLimiter
+ * @see createRateLimiter
+ */
+export const rateLimit = createRateLimiter;

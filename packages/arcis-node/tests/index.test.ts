@@ -70,7 +70,7 @@ describe('sanitizeObject', () => {
         value: "'; DROP TABLE users;--",
       },
     };
-    const result = sanitizeObject(input);
+    const result = sanitizeObject(input) as any;
     expect(result.name).not.toContain('<script>');
     expect(result.nested.value.toUpperCase()).not.toContain('DROP');
   });
@@ -81,9 +81,10 @@ describe('sanitizeObject', () => {
       constructor: { prototype: { admin: true } },
       name: 'test',
     };
-    const result = sanitizeObject(input);
-    expect(result.__proto__).toBeUndefined();
-    expect(result.constructor).toBeUndefined();
+    const result = sanitizeObject(input) as Record<string, unknown>;
+    // Use Object.hasOwn to check for own properties (not prototype chain)
+    expect(Object.hasOwn(result, '__proto__')).toBe(false);
+    expect(Object.hasOwn(result, 'constructor')).toBe(false);
     expect(result.name).toBe('test');
   });
 
@@ -93,7 +94,7 @@ describe('sanitizeObject', () => {
       $where: 'function() { return true }',
       name: 'test',
     };
-    const result = sanitizeObject(input);
+    const result = sanitizeObject(input) as any;
     expect(result.$gt).toBeUndefined();
     expect(result.$where).toBeUndefined();
     expect(result.name).toBe('test');
@@ -101,7 +102,7 @@ describe('sanitizeObject', () => {
 
   it('should handle arrays', () => {
     const input = ['<script>alert(1)</script>', 'normal'];
-    const result = sanitizeObject(input);
+    const result = sanitizeObject(input) as any;
     expect(result[0]).not.toContain('<script>');
     expect(result[1]).toBe('normal');
   });

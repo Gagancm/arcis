@@ -65,7 +65,8 @@ describe('Integration: Full Arcis Middleware', () => {
       app.use(...arcisMiddleware);
       
       app.post('/echo', (req: Request, res: Response) => {
-        res.json({ received: req.body });
+        // Return the keys to show what's in the sanitized body
+        res.json({ received: req.body, keys: Object.keys(req.body) });
       });
       
       app.get('/ping', (_req: Request, res: Response) => {
@@ -134,8 +135,10 @@ describe('Integration: Full Arcis Middleware', () => {
     });
     
     const data = await res.json();
-    expect(data.received.__proto__).toBeUndefined();
-    expect(data.received.constructor).toBeUndefined();
+    // Check that dangerous keys are NOT in the returned object's own keys
+    expect(data.keys).not.toContain('__proto__');
+    expect(data.keys).not.toContain('constructor');
+    expect(data.keys).toContain('name');
     expect(data.received.name).toBe('test');
   });
 
@@ -592,7 +595,7 @@ describe('Integration: Validator Middleware', () => {
           password: { 
             type: 'string', 
             required: true,
-            custom: (v) => v.length >= 8 || 'Password must be at least 8 characters',
+            custom: (v) => (v as string).length >= 8 || 'Password must be at least 8 characters',
           },
         }),
         (req: Request, res: Response) => {
