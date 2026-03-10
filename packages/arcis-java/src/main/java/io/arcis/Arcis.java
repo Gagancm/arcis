@@ -1,12 +1,12 @@
-package io.shield;
+package io.arcis;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
- * Shield Security Library for Java
- * 
+ * Arcis Security Library for Java
+ *
  * One-line security for Java web applications providing:
  * - Input sanitization (XSS, SQL, NoSQL, Path traversal)
  * - Rate limiting with configurable windows
@@ -14,37 +14,37 @@ import java.util.regex.Pattern;
  * - Request validation
  * - Safe logging with redaction
  * - Production-safe error handling
- * 
+ *
  * Usage with Spring:
  * <pre>
  *     @Configuration
  *     public class SecurityConfig {
  *         @Bean
- *         public FilterRegistrationBean<ShieldFilter> shieldFilter() {
- *             FilterRegistrationBean<ShieldFilter> reg = new FilterRegistrationBean<>();
- *             reg.setFilter(new ShieldFilter());
+ *         public FilterRegistrationBean&lt;ArcisFilter&gt; arcisFilter() {
+ *             FilterRegistrationBean&lt;ArcisFilter&gt; reg = new FilterRegistrationBean&lt;&gt;();
+ *             reg.setFilter(new ArcisFilter());
  *             reg.addUrlPatterns("/*");
  *             return reg;
  *         }
  *     }
  * </pre>
- * 
+ *
  * Usage standalone:
  * <pre>
- *     Shield shield = Shield.create();
- *     String clean = shield.sanitize().sanitizeString(userInput);
+ *     Arcis arcis = Arcis.create();
+ *     String clean = arcis.sanitize().sanitizeString(userInput);
  * </pre>
  */
-public class Shield {
-    
+public class Arcis {
+
     private final Sanitizer sanitizer;
     private final RateLimiter rateLimiter;
     private final SecurityHeaders securityHeaders;
     private final Validator validator;
     private final SafeLogger logger;
     private final ErrorHandler errorHandler;
-    
-    private Shield(Builder builder) {
+
+    private Arcis(Builder builder) {
         this.sanitizer = builder.sanitizer != null ? builder.sanitizer : new Sanitizer();
         this.rateLimiter = builder.rateLimiter != null ? builder.rateLimiter : new RateLimiter();
         this.securityHeaders = builder.securityHeaders != null ? builder.securityHeaders : new SecurityHeaders();
@@ -53,10 +53,10 @@ public class Shield {
         this.errorHandler = builder.errorHandler != null ? builder.errorHandler : new ErrorHandler(false);
     }
     
-    public static Shield create() {
+    public static Arcis create() {
         return new Builder().build();
     }
-    
+
     public static Builder builder() {
         return new Builder();
     }
@@ -114,8 +114,8 @@ public class Shield {
             return this;
         }
         
-        public Shield build() {
-            return new Shield(this);
+        public Arcis build() {
+            return new Arcis(this);
         }
     }
     

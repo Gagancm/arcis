@@ -4,11 +4,11 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace Shield;
+namespace Arcis;
 
 /// <summary>
-/// Shield Security Library for .NET
-/// 
+/// Arcis Security Library for .NET
+///
 /// One-line security for ASP.NET Core applications providing:
 /// - Input sanitization (XSS, SQL, NoSQL, Path traversal)
 /// - Rate limiting with configurable windows
@@ -16,29 +16,29 @@ namespace Shield;
 /// - Request validation
 /// - Safe logging with redaction
 /// - Production-safe error handling
-/// 
+///
 /// Usage with ASP.NET Core:
 /// <code>
 /// // In Program.cs
-/// builder.Services.AddShield();
-/// 
+/// builder.Services.AddArcis();
+///
 /// // In middleware pipeline
-/// app.UseShield();
-/// 
+/// app.UseArcis();
+///
 /// // Or with options
-/// app.UseShield(options => {
+/// app.UseArcis(options => {
 ///     options.RateLimitMax = 50;
 ///     options.EnableXssSanitization = true;
 /// });
 /// </code>
-/// 
+///
 /// Standalone usage:
 /// <code>
-/// var shield = ShieldBuilder.Create().Build();
-/// var clean = shield.Sanitizer.SanitizeString(userInput);
+/// var arcis = ArcisBuilder.Create().Build();
+/// var clean = arcis.Sanitizer.SanitizeString(userInput);
 /// </code>
 /// </summary>
-public class ShieldInstance : IDisposable
+public class ArcisInstance : IDisposable
 {
     public Sanitizer Sanitizer { get; }
     public RateLimiter RateLimiter { get; }
@@ -47,7 +47,7 @@ public class ShieldInstance : IDisposable
     public SafeLogger Logger { get; }
     public ErrorHandler ErrorHandler { get; }
 
-    internal ShieldInstance(
+    internal ArcisInstance(
         Sanitizer sanitizer,
         RateLimiter rateLimiter,
         SecurityHeaders headers,
@@ -70,7 +70,7 @@ public class ShieldInstance : IDisposable
     }
 }
 
-public class ShieldBuilder
+public class ArcisBuilder
 {
     private Sanitizer? _sanitizer;
     private RateLimiter? _rateLimiter;
@@ -79,47 +79,47 @@ public class ShieldBuilder
     private SafeLogger? _logger;
     private ErrorHandler? _errorHandler;
 
-    public static ShieldBuilder Create() => new();
+    public static ArcisBuilder Create() => new();
 
-    public ShieldBuilder WithSanitizer(Sanitizer sanitizer)
+    public ArcisBuilder WithSanitizer(Sanitizer sanitizer)
     {
         _sanitizer = sanitizer;
         return this;
     }
 
-    public ShieldBuilder WithRateLimiter(RateLimiter limiter)
+    public ArcisBuilder WithRateLimiter(RateLimiter limiter)
     {
         _rateLimiter = limiter;
         return this;
     }
 
-    public ShieldBuilder WithHeaders(SecurityHeaders headers)
+    public ArcisBuilder WithHeaders(SecurityHeaders headers)
     {
         _headers = headers;
         return this;
     }
 
-    public ShieldBuilder WithValidator(Validator validator)
+    public ArcisBuilder WithValidator(Validator validator)
     {
         _validator = validator;
         return this;
     }
 
-    public ShieldBuilder WithLogger(SafeLogger logger)
+    public ArcisBuilder WithLogger(SafeLogger logger)
     {
         _logger = logger;
         return this;
     }
 
-    public ShieldBuilder WithErrorHandler(ErrorHandler handler)
+    public ArcisBuilder WithErrorHandler(ErrorHandler handler)
     {
         _errorHandler = handler;
         return this;
     }
 
-    public ShieldInstance Build()
+    public ArcisInstance Build()
     {
-        return new ShieldInstance(
+        return new ArcisInstance(
             _sanitizer ?? new Sanitizer(),
             _rateLimiter ?? new RateLimiter(),
             _headers ?? new SecurityHeaders(),

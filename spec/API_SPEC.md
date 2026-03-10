@@ -1,8 +1,8 @@
-# ShieldJS API Specification v1.0
+# Arcis API Specification v1.0
 
 ## Overview
 
-This document defines the **language-agnostic API** that all ShieldJS implementations must follow. Each implementation should feel native to its language while maintaining identical security behavior.
+This document defines the **language-agnostic API** that all Arcis implementations must follow. Each implementation should feel native to its language while maintaining identical security behavior.
 
 ---
 
@@ -207,11 +207,11 @@ Handle errors without leaking stack traces in production.
 
 ## 7. Main Entry Point
 
-### `shield(options?: ShieldOptions) -> Middleware[]`
+### `arcis(options?: ArcisOptions) -> Middleware[]`
 
 **Options:**
 ```
-ShieldOptions {
+ArcisOptions {
   sanitize?: boolean | SanitizeOptions  // Default: true
   rateLimit?: boolean | RateLimitOptions  // Default: true
   headers?: boolean | HeaderOptions  // Default: true

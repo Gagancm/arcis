@@ -56,7 +56,7 @@ Issues = "https://github.com/GagancM/arcis/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["shield*", "shield.stores*"]
+include = ["arcis*", "arcis.stores*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -6,8 +6,8 @@ This enables consistent rate limiting across multiple server instances.
 
 Usage:
     from redis import Redis
-    from redis_store import RedisRateLimitStore
-    from shield import RateLimiter
+    from arcis.stores.redis import RedisRateLimitStore
+    from arcis import RateLimiter
 
     redis_client = Redis(host='localhost', port=6379)
     store = RedisRateLimitStore(redis_client)
@@ -15,7 +15,7 @@ Usage:
     limiter = RateLimiter(max_requests=100, window_ms=60000, store=store)
 
     # Or with Flask
-    from shield import Arcis
+    from arcis import Arcis
     arcis = Arcis(app, rate_limiter_store=store)
 """
 

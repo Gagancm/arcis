@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "Test vectors for ShieldJS implementations. All implementations must pass these tests.",
+  "description": "Test vectors for Arcis implementations. All implementations must pass these tests.",
   
   "sanitize_string": {
     "xss": [

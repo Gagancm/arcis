@@ -1,8 +1,8 @@
-# Shield
+# Arcis
 
 **Cross-platform security middleware for Node.js, Python, and Go**
 
-Shield protects web applications against common vulnerabilities — XSS, SQL injection, NoSQL injection, path traversal, and more — with a single line of code and a consistent API across all supported languages.
+Arcis protects web applications against common vulnerabilities — XSS, SQL injection, NoSQL injection, path traversal, and more — with a single line of code and a consistent API across all supported languages.
 
 ---
 
@@ -30,20 +30,20 @@ Shield protects web applications against common vulnerabilities — XSS, SQL inj
 
 **Node.js / TypeScript**
 ```bash
-npm install @shield/node
+npm install @arcis/node
 ```
 
 **Python**
 ```bash
-pip install shield-security
+pip install arcis
 
 # With Redis support
-pip install shield-security[redis]
+pip install arcis[redis]
 ```
 
 **Go**
 ```bash
-go get github.com/aspect.dev/shield-go
+go get github.com/GagancM/arcis
 ```
 
 ---
@@ -53,11 +53,11 @@ go get github.com/aspect.dev/shield-go
 ### Node.js / Express
 
 ```javascript
-import shield from '@shield/node';
+import { arcis } from '@arcis/node';
 import express from 'express';
 
 const app = express();
-app.use(shield());
+app.use(arcis());
 
 app.listen(3000);
 ```
@@ -66,20 +66,20 @@ app.listen(3000);
 
 ```python
 from flask import Flask
-from shield import Shield
+from arcis import Arcis
 
 app = Flask(__name__)
-Shield(app)
+Arcis(app)
 ```
 
 ### Python / FastAPI
 
 ```python
 from fastapi import FastAPI
-from shield.fastapi import ShieldMiddleware
+from arcis.fastapi import ArcisMiddleware
 
 app = FastAPI()
-app.add_middleware(ShieldMiddleware)
+app.add_middleware(ArcisMiddleware)
 ```
 
 ### Python / Django
@@ -87,7 +87,7 @@ app.add_middleware(ShieldMiddleware)
 ```python
 # settings.py
 MIDDLEWARE = [
-    'shield.django.ShieldMiddleware',
+    'arcis.django.ArcisMiddleware',
     # ...
 ]
 ```
@@ -95,10 +95,10 @@ MIDDLEWARE = [
 ### Go / net/http
 
 ```go
-import shield "github.com/aspect.dev/shield-go"
+import "github.com/GagancM/arcis"
 
 func main() {
-    http.Handle("/", shield.Protect(myHandler))
+    http.Handle("/", arcis.Protect(myHandler))
     http.ListenAndServe(":8080", nil)
 }
 ```
@@ -108,12 +108,12 @@ func main() {
 ```go
 import (
     "github.com/gin-gonic/gin"
-    shieldgin "github.com/aspect.dev/shield-go/gin"
+    arcisgin "github.com/GagancM/arcis/gin"
 )
 
 func main() {
     r := gin.Default()
-    r.Use(shieldgin.Middleware())
+    r.Use(arcisgin.Middleware())
     r.Run(":8080")
 }
 ```
@@ -123,12 +123,12 @@ func main() {
 ```go
 import (
     "github.com/labstack/echo/v4"
-    shieldecho "github.com/aspect.dev/shield-go/echo"
+    arcisecho "github.com/GagancM/arcis/echo"
 )
 
 func main() {
     e := echo.New()
-    e.Use(shieldecho.Middleware())
+    e.Use(arcisecho.Middleware())
     e.Start(":8080")
 }
 ```
@@ -161,7 +161,7 @@ All SDKs share the same configuration surface.
 ### Node.js
 
 ```javascript
-app.use(shield({
+app.use(arcis({
   sanitize: true,
   rateLimit: {
     max: 100,
@@ -178,7 +178,7 @@ app.use(shield({
 ### Python
 
 ```python
-Shield(app,
+Arcis(app,
     sanitize=True,
     rate_limit_max=100,
     rate_limit_window_ms=60_000,
@@ -191,7 +191,7 @@ Shield(app,
 
 ```go
 // net/http
-shield.NewWithConfig(shield.Config{
+arcis.NewWithConfig(arcis.Config{
     Sanitize:          true,
     RateLimitMax:      100,
     RateLimitWindow:   time.Minute,
@@ -201,7 +201,7 @@ shield.NewWithConfig(shield.Config{
 })
 
 // Gin
-r.Use(shieldgin.MiddlewareWithConfig(shieldgin.Config{
+r.Use(arcisgin.MiddlewareWithConfig(arcisgin.Config{
     RateLimitMax:    100,
     RateLimitWindow: time.Minute,
     CSP:             "default-src 'self'",
@@ -220,7 +220,7 @@ X-RateLimit-Remaining: 95
 X-RateLimit-Reset:     42
 ```
 
-When a client exceeds the limit, Shield returns HTTP `429`:
+When a client exceeds the limit, Arcis returns HTTP `429`:
 
 ```json
 {
@@ -235,7 +235,7 @@ The window resets automatically. No configuration required beyond `max` and `win
 
 ## Security Headers
 
-Shield sets the following response headers by default:
+Arcis sets the following response headers by default:
 
 | Header | Default Value |
 |--------|---------------|
@@ -256,17 +256,17 @@ Headers removed from responses:
 
 ```python
 # Python — pass a string instead of True
-Shield(app, cache_control="public, max-age=3600")
+Arcis(app, cache_control="public, max-age=3600")
 ```
 
 ```javascript
 // Node.js
-app.use(shield({ headers: { cacheControl: "public, max-age=3600" } }));
+app.use(arcis({ headers: { cacheControl: "public, max-age=3600" } }));
 ```
 
 ```go
 // Go
-shield.Config{
+arcis.Config{
     CacheControl:      true,
     CacheControlValue: "public, max-age=3600",
 }
@@ -281,7 +281,7 @@ Sanitization runs on all string values in the request body recursively. You can 
 ### Node.js
 
 ```javascript
-import { createSanitizer } from '@shield/node';
+import { createSanitizer } from '@arcis/node';
 
 const sanitizer = createSanitizer();
 const clean = sanitizer.sanitizeString(userInput);
@@ -291,7 +291,7 @@ const cleanObj = sanitizer.sanitizeObject(requestBody);
 ### Python
 
 ```python
-from shield.core import Sanitizer
+from arcis.core import Sanitizer
 
 sanitizer = Sanitizer()
 clean = sanitizer.sanitize_string(user_input)
@@ -301,7 +301,7 @@ clean_obj = sanitizer.sanitize_dict(request_body)
 ### Go
 
 ```go
-sanitizer := shield.NewSanitizer(shield.DefaultConfig())
+sanitizer := arcis.NewSanitizer(arcis.DefaultConfig())
 clean := sanitizer.SanitizeString(userInput)
 cleanMap := sanitizer.SanitizeMap(requestBody)
 ```
@@ -313,7 +313,7 @@ cleanMap := sanitizer.SanitizeMap(requestBody)
 ### Node.js
 
 ```javascript
-import { validate } from '@shield/node';
+import { validate } from '@arcis/node';
 
 app.post('/users', validate({
   email:    { type: 'email',  required: true },
@@ -325,7 +325,7 @@ app.post('/users', validate({
 ### Python
 
 ```python
-from shield.core import SchemaValidator
+from arcis.core import SchemaValidator
 
 validator = SchemaValidator({
     'email':    {'type': 'email',  'required': True},
@@ -340,7 +340,7 @@ if errors:
 ### Go
 
 ```go
-validator := shield.NewValidator(shield.ValidationSchema{
+validator := arcis.NewValidator(arcis.ValidationSchema{
     "email": {Type: "email", Required: true},
     "age":   {Type: "number", Min: 0, Max: 150},
 })
@@ -356,7 +356,7 @@ For multi-instance deployments, plug in a Redis-backed store instead of the defa
 ### Node.js
 
 ```javascript
-import { createRateLimiter } from '@shield/node';
+import { createRateLimiter } from '@arcis/node';
 import { RedisStore } from './stores/redis';
 
 app.use(createRateLimiter({
@@ -369,57 +369,57 @@ app.use(createRateLimiter({
 ### Python / Flask (sync)
 
 ```python
-from shield import Shield
-from shield.stores.redis import RedisRateLimitStore
+from arcis import Arcis
+from arcis.stores.redis import RedisRateLimitStore
 import redis
 
 client = redis.Redis(host='localhost', port=6379, db=0)
 store = RedisRateLimitStore(client)
 
-Shield(app, rate_limit_store=store)
+Arcis(app, rate_limit_store=store)
 ```
 
 ### Python / FastAPI (async)
 
 ```python
-from shield.fastapi import ShieldMiddleware
-from shield.stores.redis import AsyncRedisRateLimitStore
+from arcis.fastapi import ArcisMiddleware
+from arcis.stores.redis import AsyncRedisRateLimitStore
 import redis.asyncio as aioredis
 
 client = aioredis.Redis(host='localhost', port=6379, db=0)
 store = AsyncRedisRateLimitStore(client)
 
-app.add_middleware(ShieldMiddleware, rate_limit_store=store)
+app.add_middleware(ArcisMiddleware, rate_limit_store=store)
 ```
 
 Install the Redis extra:
 ```bash
-pip install shield-security[redis]
+pip install arcis[redis]
 ```
 
 ### Go / net/http
 
 ```go
-import shield "github.com/aspect.dev/shield-go"
+import "github.com/GagancM/arcis"
 
-store := myredis.NewStore(redisClient) // implements shield.RateLimitStore
-limiter := shield.NewRateLimiterWithStore(100, time.Minute, store)
+store := myredis.NewStore(redisClient) // implements arcis.RateLimitStore
+limiter := arcis.NewRateLimiterWithStore(100, time.Minute, store)
 ```
 
 ### Go / Gin
 
 ```go
-import shieldgin "github.com/aspect.dev/shield-go/gin"
+import arcisgin "github.com/GagancM/arcis/gin"
 
-r.Use(shieldgin.RateLimitWithStore(100, time.Minute, store))
+r.Use(arcisgin.RateLimitWithStore(100, time.Minute, store))
 ```
 
 ### Go / Echo
 
 ```go
-import shieldecho "github.com/aspect.dev/shield-go/echo"
+import arcisecho "github.com/GagancM/arcis/echo"
 
-e.Use(shieldecho.RateLimitWithStore(100, time.Minute, store))
+e.Use(arcisecho.RateLimitWithStore(100, time.Minute, store))
 ```
 
 The `RateLimitStore` interface (Go):
@@ -437,12 +437,12 @@ type RateLimitStore interface {
 
 ## Granular Middleware
 
-Apply protections individually instead of using the combined `shield()` middleware.
+Apply protections individually instead of using the combined `arcis()` middleware.
 
 ### Node.js
 
 ```javascript
-import { createSanitizer, createRateLimiter, createHeaders } from '@shield/node';
+import { createSanitizer, createRateLimiter, createHeaders } from '@arcis/node';
 
 app.use(createHeaders());
 app.use(createRateLimiter({ max: 200, windowMs: 60_000 }));
@@ -452,7 +452,7 @@ app.use(createSanitizer());
 ### Python
 
 ```python
-from shield.core import Sanitizer, RateLimiter, SecurityHeaders
+from arcis.core import Sanitizer, RateLimiter, SecurityHeaders
 
 app.before_request(SecurityHeaders().apply)
 limiter = RateLimiter(max_requests=200, window_ms=60_000)
@@ -461,29 +461,29 @@ limiter = RateLimiter(max_requests=200, window_ms=60_000)
 ### Go / Gin
 
 ```go
-r.Use(shieldgin.Headers())
-r.Use(shieldgin.RateLimit(200, time.Minute))
-r.Use(shieldgin.Sanitizer())
+r.Use(arcisgin.Headers())
+r.Use(arcisgin.RateLimit(200, time.Minute))
+r.Use(arcisgin.Sanitizer())
 ```
 
 ### Go / Echo
 
 ```go
-e.Use(shieldecho.Headers())
-e.Use(shieldecho.RateLimit(200, time.Minute))
-e.Use(shieldecho.Sanitizer())
+e.Use(arcisecho.Headers())
+e.Use(arcisecho.RateLimit(200, time.Minute))
+e.Use(arcisecho.Sanitizer())
 ```
 
 ---
 
 ## Resource Cleanup
 
-Shield runs a background goroutine (Go) or thread (Python) for periodic cleanup of expired rate-limit entries. Stop it on shutdown to avoid resource leaks.
+Arcis runs a background goroutine (Go) or thread (Python) for periodic cleanup of expired rate-limit entries. Stop it on shutdown to avoid resource leaks.
 
 ### Node.js
 
 ```javascript
-const middleware = shield();
+const middleware = arcis();
 process.on('SIGTERM', () => middleware.close());
 ```
 
@@ -491,8 +491,8 @@ process.on('SIGTERM', () => middleware.close());
 
 ```python
 import atexit
-shield_instance = Shield(app)
-atexit.register(shield_instance.close)
+arcis_instance = Arcis(app)
+atexit.register(arcis_instance.close)
 ```
 
 ### Go — graceful shutdown
@@ -504,12 +504,12 @@ defer stop()
 go r.Run(":8080")
 
 <-ctx.Done()
-shieldgin.Cleanup()
+arcisgin.Cleanup()
 ```
 
 ```go
 // Or simply:
-defer shieldgin.Cleanup()
+defer arcisgin.Cleanup()
 ```
 
 ---
@@ -517,17 +517,17 @@ defer shieldgin.Cleanup()
 ## Project Structure
 
 ```
-shield/
+arcis/
 ├── spec/
 │   ├── API_SPEC.md              # Behaviour contract all SDKs must implement
 │   └── TEST_VECTORS.json        # Shared test cases for cross-platform parity
 ├── packages/
 │   ├── core/
 │   │   └── patterns.json        # Shared regex patterns for security rules
-│   ├── shield-node/             # Node.js / TypeScript SDK
-│   ├── shield-python/           # Python SDK
-│   │   └── shield/stores/       # Pluggable store implementations (Redis, etc.)
-│   └── shield-go/               # Go SDK
+│   ├── arcis-node/              # Node.js / TypeScript SDK
+│   ├── arcis-python/            # Python SDK
+│   │   └── arcis/stores/        # Pluggable store implementations (Redis, etc.)
+│   └── arcis-go/                # Go SDK
 │       ├── gin/                 # Gin adapter
 │       └── echo/                # Echo adapter
 ├── examples/
@@ -550,9 +550,9 @@ This ensures identical sanitization results regardless of language.
 
 | SDK | Status | Install | Frameworks |
 |-----|--------|---------|------------|
-| Node.js | ✅ Stable | `npm install @shield/node` | Express, Fastify, Koa |
-| Python | ✅ Stable | `pip install shield-security` | Flask, FastAPI, Django |
-| Go | ✅ Stable | `go get github.com/aspect.dev/shield-go` | net/http, Gin, Echo |
+| Node.js | ✅ Stable | `npm install @arcis/node` | Express |
+| Python | ✅ Stable | `pip install arcis` | Flask, FastAPI, Django |
+| Go | ✅ Stable | `go get github.com/GagancM/arcis` | net/http, Gin, Echo |
 | Java | 🔨 Planned | Maven | Spring Boot |
 | C# | 🔨 Planned | NuGet | ASP.NET Core |
 
@@ -564,29 +564,29 @@ This ensures identical sanitization results regardless of language.
 
 ```bash
 # Node.js
-cd packages/shield-node && npm test
+cd packages/arcis-node && npm test
 
 # Python
-cd packages/shield-python && pytest
+cd packages/arcis-python && pytest
 
 # Python benchmarks
-cd packages/shield-python && pytest tests/test_benchmarks.py --benchmark-only
+cd packages/arcis-python && pytest tests/test_benchmarks.py --benchmark-only
 
 # Go
-cd packages/shield-go && go test ./...
+cd packages/arcis-go && go test ./...
 ```
 
 ### Building
 
 ```bash
 # Node.js
-cd packages/shield-node && npm run build
+cd packages/arcis-node && npm run build
 
 # Python
-cd packages/shield-python && pip install -e .
+cd packages/arcis-python && pip install -e .
 
 # Go
-cd packages/shield-go && go build ./...
+cd packages/arcis-go && go build ./...
 ```
 
 ### Contributing
