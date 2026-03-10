@@ -57,6 +57,9 @@ const Version = "1.0.0"
 // MaxRecursionDepth is the maximum depth for recursive operations.
 const MaxRecursionDepth = 10
 
+// DefaultMaxInputSize is the default maximum input size in bytes (1MB).
+const DefaultMaxInputSize = 1_000_000
+
 // Config holds Arcis configuration options.
 type Config struct {
 	// Sanitizer options
@@ -100,7 +103,7 @@ func DefaultConfig() Config {
 		SanitizeNoSQL:     true,
 		SanitizePath:      true,
 		SanitizeCmd:       true,
-		MaxInputSize:      1000000, // 1MB default
+		MaxInputSize:      DefaultMaxInputSize,
 		RateLimit:         true,
 		RateLimitMax:      100,
 		RateLimitWindow:   time.Minute,
@@ -257,9 +260,9 @@ var xssPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)<iframe`),
 	regexp.MustCompile(`(?i)<object`),
 	regexp.MustCompile(`(?i)<embed`),
-	regexp.MustCompile(`(?i)data:`),
-	regexp.MustCompile(`(?i)%3Cscript`),       // URL-encoded <script
-	regexp.MustCompile(`(?i)<svg[^>]*onload`), // SVG with onload
+	regexp.MustCompile(`(?i)(?:^|[\s"'=])data:`), // data: URIs only (avoid false positives like "metadata:")
+	regexp.MustCompile(`(?i)%3Cscript`),           // URL-encoded <script
+	regexp.MustCompile(`(?i)<svg[^>]*onload`),     // SVG with onload
 }
 
 // Pre-compiled SQL injection patterns
@@ -272,6 +275,9 @@ var sqlPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bOR\s+['"][^'"]+['"]\s*=\s*['"][^'"]+['"]`),   // OR 'a'='a'
 	regexp.MustCompile(`(?i)\bAND\s+\d+\s*=\s*\d+`),                        // AND 1=1
 	regexp.MustCompile(`(?i)\bAND\s+['"][^'"]+['"]\s*=\s*['"][^'"]+['"]`), // AND 'a'='a'
+	// Time-based blind SQL injection
+	regexp.MustCompile(`(?i)\bSLEEP\s*\(\s*\d+\s*\)`),                      // SLEEP(5)
+	regexp.MustCompile(`(?i)\bBENCHMARK\s*\(`),                              // BENCHMARK(100000, MD5(1))
 }
 
 // Pre-compiled path traversal patterns
@@ -333,7 +339,7 @@ type Sanitizer struct {
 func NewSanitizer(config Config) *Sanitizer {
 	maxSize := config.MaxInputSize
 	if maxSize <= 0 {
-		maxSize = 1000000 // 1MB default
+		maxSize = DefaultMaxInputSize
 	}
 	return &Sanitizer{
 		xss:          config.SanitizeXSS,
@@ -353,7 +359,7 @@ func NewSanitizerWithOptions(xss, sql, nosql, path, cmd bool) *Sanitizer {
 		nosql:        nosql,
 		path:         path,
 		cmd:          cmd,
-		maxInputSize: 1000000,
+		maxInputSize: DefaultMaxInputSize,
 	}
 }
 
@@ -1053,6 +1059,24 @@ func (v *Validator) Validate(data map[string]interface{}) (map[string]interface{
 
 // ValidateHandler creates middleware that validates request body.
 // Only fields in the schema are passed to the handler (mass assignment prevention).
+//
+// IMPORTANT: This handler reads and consumes the request body. The original
+// request body will no longer be available after validation. The validated
+// data is stored in the request context and can be retrieved using
+// GetValidatedBody(r).
+//
+// Example:
+//
+//	schema := arcis.ValidationSchema{
+//		"email": arcis.FieldRule{Type: arcis.TypeEmail, Required: true},
+//		"name":  arcis.FieldRule{Type: arcis.TypeString, Min: arcis.Float(2)},
+//	}
+//	http.Handle("/users", arcis.ValidateHandler(schema, myHandler))
+//
+//	func myHandler(w http.ResponseWriter, r *http.Request) {
+//		data := arcis.GetValidatedBody(r) // Retrieve validated data
+//		// ...
+//	}
 func ValidateHandler(schema ValidationSchema, next http.Handler) http.Handler {
 	validator := NewValidator(schema)
 
@@ -1142,7 +1166,29 @@ func NewSafeLogger() *SafeLogger {
 }
 
 // NewSafeLoggerWithKeys creates a SafeLogger with custom sensitive keys.
+// Custom keys are merged with the defaults (password, token, apikey, etc.)
+// to ensure base protection is never accidentally removed.
 func NewSafeLoggerWithKeys(keys []string, maxLength int) *SafeLogger {
+	// Start with default sensitive keys (same behavior as Node.js)
+	keyMap := make(map[string]bool, len(defaultSensitiveKeys)+len(keys))
+	for _, k := range defaultSensitiveKeys {
+		keyMap[strings.ToLower(k)] = true
+	}
+	// Add custom keys
+	for _, k := range keys {
+		keyMap[strings.ToLower(k)] = true
+	}
+	return &SafeLogger{
+		sensitiveKeys: keyMap,
+		maxLength:     maxLength,
+	}
+}
+
+// NewSafeLoggerOnlyKeys creates a SafeLogger with ONLY the specified keys,
+// completely replacing the defaults. Use with caution - you may accidentally
+// log sensitive data like passwords if you forget to include them.
+// Prefer NewSafeLoggerWithKeys in most cases.
+func NewSafeLoggerOnlyKeys(keys []string, maxLength int) *SafeLogger {
 	keyMap := make(map[string]bool, len(keys))
 	for _, k := range keys {
 		keyMap[strings.ToLower(k)] = true

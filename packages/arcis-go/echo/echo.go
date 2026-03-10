@@ -69,6 +69,7 @@ package echo
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -154,7 +155,10 @@ func (s *arcisInstance) Close() {
 }
 
 // activeInstances tracks Arcis instances for cleanup.
-var activeInstances []*arcisInstance
+var (
+	activeInstances   []*arcisInstance
+	activeInstancesMu sync.Mutex
+)
 
 // Cleanup closes all active Arcis middleware instances and releases resources.
 // This stops the background goroutines used by rate limiters for automatic
@@ -182,10 +186,19 @@ var activeInstances []*arcisInstance
 //	e.Shutdown(context.Background())
 //	arcisecho.Cleanup()
 func Cleanup() {
+	activeInstancesMu.Lock()
+	defer activeInstancesMu.Unlock()
 	for _, instance := range activeInstances {
 		instance.Close()
 	}
 	activeInstances = nil
+}
+
+// registerInstance safely adds an instance to the active instances list.
+func registerInstance(instance *arcisInstance) {
+	activeInstancesMu.Lock()
+	defer activeInstancesMu.Unlock()
+	activeInstances = append(activeInstances, instance)
 }
 
 // Middleware returns an Echo middleware with default Arcis configuration.
@@ -237,7 +250,7 @@ func MiddlewareWithConfig(config Config) echo.MiddlewareFunc {
 		securityHeaders = arcis.NewSecurityHeaders(arcisConfig)
 	}
 
-	activeInstances = append(activeInstances, instance)
+	registerInstance(instance)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -326,7 +339,7 @@ func RateLimit(max int, window time.Duration) echo.MiddlewareFunc {
 func RateLimitWithStore(max int, window time.Duration, store arcis.RateLimitStore) echo.MiddlewareFunc {
 	limiter := arcis.NewRateLimiterWithStore(max, window, store)
 	instance := &arcisInstance{rateLimiter: limiter}
-	activeInstances = append(activeInstances, instance)
+	registerInstance(instance)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -353,7 +366,7 @@ func RateLimitWithStore(max int, window time.Duration, store arcis.RateLimitStor
 func RateLimitWithSkip(max int, window time.Duration, skip func(echo.Context) bool) echo.MiddlewareFunc {
 	limiter := arcis.NewRateLimiter(max, window)
 	instance := &arcisInstance{rateLimiter: limiter}
-	activeInstances = append(activeInstances, instance)
+	registerInstance(instance)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

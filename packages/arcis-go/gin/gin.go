@@ -68,6 +68,7 @@ package gin
 import (
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -147,7 +148,10 @@ func (s *arcisInstance) Close() {
 }
 
 // activeInstances tracks Arcis instances for cleanup.
-var activeInstances []*arcisInstance
+var (
+	activeInstances   []*arcisInstance
+	activeInstancesMu sync.Mutex
+)
 
 // Cleanup closes all active Arcis middleware instances and releases resources.
 // This stops the background goroutines used by rate limiters for automatic
@@ -174,10 +178,19 @@ var activeInstances []*arcisInstance
 //	<-ctx.Done()
 //	arcisgin.Cleanup()
 func Cleanup() {
+	activeInstancesMu.Lock()
+	defer activeInstancesMu.Unlock()
 	for _, instance := range activeInstances {
 		instance.Close()
 	}
 	activeInstances = nil
+}
+
+// registerInstance safely adds an instance to the active instances list.
+func registerInstance(instance *arcisInstance) {
+	activeInstancesMu.Lock()
+	defer activeInstancesMu.Unlock()
+	activeInstances = append(activeInstances, instance)
 }
 
 // Middleware returns a Gin middleware with default Arcis configuration.
@@ -229,7 +242,7 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 		securityHeaders = arcis.NewSecurityHeaders(arcisConfig)
 	}
 
-	activeInstances = append(activeInstances, instance)
+	registerInstance(instance)
 
 	return func(c *gin.Context) {
 		// Skip function check for rate limiting
@@ -315,7 +328,7 @@ func RateLimit(max int, window time.Duration) gin.HandlerFunc {
 func RateLimitWithStore(max int, window time.Duration, store arcis.RateLimitStore) gin.HandlerFunc {
 	limiter := arcis.NewRateLimiterWithStore(max, window, store)
 	instance := &arcisInstance{rateLimiter: limiter}
-	activeInstances = append(activeInstances, instance)
+	registerInstance(instance)
 
 	return func(c *gin.Context) {
 		result := limiter.Check(c.Request)
@@ -341,7 +354,7 @@ func RateLimitWithStore(max int, window time.Duration, store arcis.RateLimitStor
 func RateLimitWithSkip(max int, window time.Duration, skip func(*gin.Context) bool) gin.HandlerFunc {
 	limiter := arcis.NewRateLimiter(max, window)
 	instance := &arcisInstance{rateLimiter: limiter}
-	activeInstances = append(activeInstances, instance)
+	registerInstance(instance)
 
 	return func(c *gin.Context) {
 		if skip != nil && skip(c) {

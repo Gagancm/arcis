@@ -5,6 +5,7 @@ Includes both sync and async rate limiters for FastAPI applications.
 """
 
 import time
+import json
 import asyncio
 from typing import Callable, Optional, Dict, Any, Protocol
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -82,12 +83,15 @@ class AsyncInMemoryStore:
             self._store[key] = RateLimitEntry(count=count, reset_time=reset_time)
     
     async def increment(self, key: str) -> int:
-        """Increment count for a key."""
+        """Increment count for a key. Creates entry if missing."""
         async with self._lock:
             entry = self._store.get(key)
             if entry:
                 entry.count += 1
                 return entry.count
+            # Entry doesn't exist - create it (defensive: should not happen in normal flow)
+            # Use a default reset_time of 60s from now; caller should use set() for new entries
+            self._store[key] = RateLimitEntry(count=1, reset_time=time.time() + 60)
             return 1
     
     async def cleanup(self) -> None:
@@ -142,7 +146,7 @@ class AsyncRateLimiter:
         result = await limiter.check(request)
         
         # With custom async store (e.g., Redis)
-        from arcis.examples.redis_store import AsyncRedisRateLimitStore
+        from arcis.stores.redis import AsyncRedisRateLimitStore
         import redis.asyncio as redis
         
         redis_client = redis.Redis()
@@ -311,7 +315,7 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         )
         
         # With custom async store (e.g., Redis):
-        from arcis.examples.redis_store import AsyncRedisRateLimitStore
+        from arcis.stores.redis import AsyncRedisRateLimitStore
         import redis.asyncio as redis
         
         redis_client = redis.Redis()
@@ -420,7 +424,14 @@ class ArcisMiddleware(BaseHTTPMiddleware):
                     body = await request.json()
                     request.state.sanitized_body = self.sanitizer(body)
                     request.state.json = request.state.sanitized_body
+                except json.JSONDecodeError as e:
+                    # Return 400 for malformed JSON
+                    return JSONResponse(
+                        content={"error": "Invalid JSON in request body", "detail": str(e)},
+                        status_code=400,
+                    )
                 except Exception:
+                    # For other errors (empty body, etc.), continue without sanitized body
                     pass
         
         # Process request with error handling

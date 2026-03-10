@@ -15,32 +15,62 @@ from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
 
-# Load patterns from core
-PATTERNS_PATH = Path(__file__).parent.parent.parent / "core" / "patterns.json"
+# Try multiple paths for patterns.json:
+# 1. Development: relative to this file in monorepo structure
+# 2. Installed: bundled with the package
+# 3. Fallback: embedded patterns
+
+def _find_patterns_path() -> Optional[Path]:
+    """Find patterns.json in development or installed locations."""
+    # Development path: packages/arcis-python/arcis/core.py -> packages/core/patterns.json
+    dev_path = Path(__file__).parent.parent.parent / "core" / "patterns.json"
+    if dev_path.exists():
+        return dev_path
+    
+    # Installed path: bundled in package data
+    pkg_path = Path(__file__).parent / "data" / "patterns.json"
+    if pkg_path.exists():
+        return pkg_path
+    
+    return None
+
 
 def load_patterns() -> Dict:
-    """Load security patterns from core package."""
-    try:
-        with open(PATTERNS_PATH, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        # Fallback to embedded patterns
-        return get_embedded_patterns()
+    """Load security patterns from core package or embedded fallback."""
+    patterns_path = _find_patterns_path()
+    if patterns_path:
+        try:
+            with open(patterns_path, 'r') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+    # Fallback to embedded patterns
+    return get_embedded_patterns()
 
 def get_embedded_patterns() -> Dict:
-    """Fallback embedded patterns if core not available."""
+    """Fallback embedded patterns if core not available.
+    
+    Note: These patterns are used when patterns.json cannot be loaded
+    (e.g., pip-installed packages). Keep in sync with patterns.json.
+    
+    IMPORTANT: This must match patterns.json exactly to ensure pip-installed
+    packages have the same protection as development installations.
+    """
     return {
         "patterns": {
             "xss": {
                 "rules": [
-                    {"pattern": r"<script\b[^<]*(?:(?!</script>)<[^<]*)*</script>", "flags": "gi"},
+                    # ReDoS-safe script tag pattern (avoid nested quantifiers)
+                    {"pattern": r"<script[^>]*>[\s\S]*?</script>", "flags": "gi"},
                     {"pattern": r"javascript:", "flags": "gi"},
                     {"pattern": r"vbscript:", "flags": "gi"},
                     {"pattern": r"on\w+\s*=", "flags": "gi"},
                     {"pattern": r"<iframe", "flags": "gi"},
                     {"pattern": r"<object", "flags": "gi"},
                     {"pattern": r"<embed", "flags": "gi"},
-                    {"pattern": r"data:", "flags": "gi"},
+                    {"pattern": r"(?:^|[\s\"'=])data:", "flags": "gi"},  # data: URIs only
+                    {"pattern": r"%3Cscript", "flags": "gi"},  # URL-encoded <script
+                    {"pattern": r"<svg[^>]*onload", "flags": "gi"},  # SVG with onload
                 ],
                 "encoding": {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;"}
             },
@@ -50,12 +80,24 @@ def get_embedded_patterns() -> Dict:
                     {"pattern": r"(--|/\*|\*/)", "flags": "g"},
                     {"pattern": r"(;|\|\||&&)", "flags": "g"},
                     {"pattern": r"\bOR\s+\d+\s*=\s*\d+", "flags": "gi"},
+                    {"pattern": r"\bOR\s+['"][^'\"]+['"]\s*=\s*['"][^'\"]+['\"]", "flags": "gi"},  # OR 'a'='a'
                     {"pattern": r"\bAND\s+\d+\s*=\s*\d+", "flags": "gi"},
+                    {"pattern": r"\bAND\s+['"][^'\"]+['"]\s*=\s*['"][^'\"]+['\"]", "flags": "gi"},  # AND 'a'='a'
+                    # Time-based blind SQL injection
+                    {"pattern": r"\bSLEEP\s*\(\s*\d+\s*\)", "flags": "gi"},
+                    {"pattern": r"\bBENCHMARK\s*\(", "flags": "gi"},
                 ]
             },
             "nosql_injection": {
                 "dangerous_keys": ["$gt", "$gte", "$lt", "$lte", "$ne", "$eq", "$in", "$nin", 
                                    "$and", "$or", "$not", "$exists", "$type", "$regex", "$where", "$expr"]
+            },
+            "command_injection": {
+                "rules": [
+                    {"pattern": r"[;&|`$()]", "flags": "g"},
+                    {"pattern": r"\b(cat|ls|rm|mv|cp|wget|curl|nc|bash|sh|python|perl|ruby|php|node|powershell|cmd)\b", "flags": "gi"},
+                    {"pattern": r"(>>|<<|>|<)\s*[/\w]", "flags": "g"},  # Shell redirection
+                ]
             },
             "path_traversal": {
                 "rules": [
@@ -63,7 +105,23 @@ def get_embedded_patterns() -> Dict:
                     {"pattern": r"\.\.\\", "flags": "g"},
                     {"pattern": r"%2e%2e", "flags": "gi"},
                     {"pattern": r"%252e", "flags": "gi"},
+                    {"pattern": r"%00", "flags": "gi"},  # Null byte injection
                 ]
+            },
+            "ldap_injection": {
+                "rules": [
+                    {"pattern": r"[()\\*]", "flags": "g"},  # LDAP special characters
+                ]
+            },
+            "xml_injection": {
+                "rules": [
+                    {"pattern": r"<!DOCTYPE", "flags": "gi"},
+                    {"pattern": r"<!ENTITY", "flags": "gi"},
+                    {"pattern": r"SYSTEM\s+[\"']", "flags": "gi"},
+                ]
+            },
+            "prototype_pollution": {
+                "dangerous_keys": ["__proto__", "constructor", "prototype"]
             }
         },
         "security_headers": {
@@ -75,12 +133,17 @@ def get_embedded_patterns() -> Dict:
             "Referrer-Policy": "strict-origin-when-cross-origin",
             "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
             "X-Permitted-Cross-Domain-Policies": "none",
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
         },
-        "sensitive_keys": ["password", "passwd", "pwd", "secret", "token", "apikey", "api_key", 
-                          "authorization", "auth", "credit_card", "creditcard", "cc", "ssn",
-                          "social_security", "private_key", "privateKey", "access_token",
-                          "accessToken", "refresh_token", "refreshToken", "bearer", "jwt",
-                          "session", "cookie"]
+        "sensitive_keys": [
+            "password", "passwd", "pwd", "secret", "token", "apikey", "api_key", "apiKey",
+            "authorization", "auth", "credit_card", "creditcard", "cc", "ssn",
+            "social_security", "private_key", "privateKey", "access_token",
+            "accessToken", "refresh_token", "refreshToken", "bearer", "jwt",
+            "session", "cookie", "x-api-key", "x-auth-token", "credentials"
+        ]
     }
 
 PATTERNS = load_patterns()
@@ -132,12 +195,14 @@ class Sanitizer:
         self.command = command
         self.max_input_size = max_input_size
         
-        # Compile XSS patterns (ReDoS-safe)
+        # Compile XSS patterns (prefer ReDoS-safe variants)
         self._xss_patterns = []
         if "xss" in PATTERNS.get("patterns", {}):
             for rule in PATTERNS["patterns"]["xss"].get("rules", []):
                 flags = re.IGNORECASE if "i" in rule.get("flags", "") else 0
-                self._xss_patterns.append(re.compile(rule["pattern"], flags))
+                # Prefer pattern_safe when available (ReDoS-safe variant)
+                pattern_str = rule.get("pattern_safe") or rule.get("pattern")
+                self._xss_patterns.append(re.compile(pattern_str, flags))
         
         # Compile SQL patterns
         self._sql_patterns = []
@@ -290,12 +355,15 @@ class InMemoryStore:
             self._store[key] = RateLimitEntry(count=count, reset_time=reset_time)
 
     def increment(self, key: str) -> int:
-        """Increment the request count for an existing key and return the new count."""
+        """Increment the request count for a key. Creates entry if missing."""
         with self._lock:
             entry = self._store.get(key)
             if entry:
                 entry.count += 1
                 return entry.count
+            # Entry doesn't exist - create it (defensive: should not happen in normal flow)
+            # Use a default reset_time of 60s from now; caller should use set() for new entries
+            self._store[key] = RateLimitEntry(count=1, reset_time=time.time() + 60)
             return 1
     
     def cleanup(self):

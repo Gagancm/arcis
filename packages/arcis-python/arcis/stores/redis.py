@@ -5,6 +5,12 @@ Arcis Redis Rate Limit Store
 Distributed rate limiting using Redis as the backing store.
 Enables consistent rate limiting across multiple server instances.
 
+Time unit contract:
+    The RateLimiter interface uses SECONDS for reset_time (Unix timestamp).
+    Internally, this store converts to/from milliseconds for Redis storage
+    to maintain precision. The Lua script also uses milliseconds internally.
+    All conversions happen at the store boundary — callers always use seconds.
+
 Usage (sync — Flask, Django):
     from redis import Redis
     from arcis.stores.redis import RedisRateLimitStore
@@ -118,6 +124,7 @@ class RedisRateLimitStore:
         return f"{self._key_prefix}{key}"
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get rate limit entry. Returns dict with count and reset_time (in seconds)."""
         if self._closed:
             return None
         try:
@@ -130,25 +137,31 @@ class RedisRateLimitStore:
             if not count or not reset_time:
                 return None
 
-            reset_time = float(reset_time)
-            if reset_time < time.time() * 1000:
+            # reset_time is stored in milliseconds, convert to seconds for comparison
+            reset_time_ms = float(reset_time)
+            now_ms = time.time() * 1000
+            if reset_time_ms < now_ms:
                 return None
 
-            return {"count": int(count), "reset_time": reset_time}
+            # Return reset_time in seconds to match RateLimiter interface
+            return {"count": int(count), "reset_time": reset_time_ms / 1000}
         except Exception as e:
             print(f"[Arcis RedisStore] get error: {e}")
             return None
 
     def set(self, key: str, count: int, reset_time: float) -> None:
+        """Store rate limit entry. reset_time should be in seconds (Unix timestamp)."""
         if self._closed:
             return
         try:
             full_key = self._key(key)
-            now_ms = time.time() * 1000
-            ttl_ms = max(int(reset_time - now_ms), self._window_ms) + (self._ttl_buffer * 1000)
+            # Convert reset_time from seconds to milliseconds for storage
+            reset_time_ms = int(reset_time * 1000)
+            now_ms = int(time.time() * 1000)
+            ttl_ms = max(reset_time_ms - now_ms, self._window_ms) + (self._ttl_buffer * 1000)
 
             pipe = self._redis.pipeline()
-            pipe.hset(full_key, mapping={"count": count, "reset_time": int(reset_time)})
+            pipe.hset(full_key, mapping={"count": count, "reset_time": reset_time_ms})
             pipe.pexpire(full_key, ttl_ms)
             pipe.execute()
         except Exception as e:
@@ -224,6 +237,7 @@ class AsyncRedisRateLimitStore:
         return f"{self._key_prefix}{key}"
 
     async def get(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get rate limit entry. Returns dict with count and reset_time (in seconds)."""
         if self._closed:
             return None
         try:
@@ -236,25 +250,31 @@ class AsyncRedisRateLimitStore:
             if not count or not reset_time:
                 return None
 
-            reset_time = float(reset_time)
-            if reset_time < time.time() * 1000:
+            # reset_time is stored in milliseconds, convert to seconds for comparison
+            reset_time_ms = float(reset_time)
+            now_ms = time.time() * 1000
+            if reset_time_ms < now_ms:
                 return None
 
-            return {"count": int(count), "reset_time": reset_time}
+            # Return reset_time in seconds to match RateLimiter interface
+            return {"count": int(count), "reset_time": reset_time_ms / 1000}
         except Exception as e:
             print(f"[Arcis AsyncRedisStore] get error: {e}")
             return None
 
     async def set(self, key: str, count: int, reset_time: float) -> None:
+        """Store rate limit entry. reset_time should be in seconds (Unix timestamp)."""
         if self._closed:
             return
         try:
             full_key = self._key(key)
-            now_ms = time.time() * 1000
-            ttl_ms = max(int(reset_time - now_ms), self._window_ms) + (self._ttl_buffer * 1000)
+            # Convert reset_time from seconds to milliseconds for storage
+            reset_time_ms = int(reset_time * 1000)
+            now_ms = int(time.time() * 1000)
+            ttl_ms = max(reset_time_ms - now_ms, self._window_ms) + (self._ttl_buffer * 1000)
 
             pipe = self._redis.pipeline()
-            pipe.hset(full_key, mapping={"count": count, "reset_time": int(reset_time)})
+            pipe.hset(full_key, mapping={"count": count, "reset_time": reset_time_ms})
             pipe.pexpire(full_key, ttl_ms)
             await pipe.execute()
         except Exception as e:
