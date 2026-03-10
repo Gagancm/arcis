@@ -48,6 +48,9 @@ dev = [
     "httpx>=0.24.0",
 ]
 
+[project.scripts]
+arcis = "arcis.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/GagancM/arcis"
 Documentation = "https://arcis.dev"
@@ -56,7 +59,7 @@ Issues = "https://github.com/GagancM/arcis/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["arcis*", "arcis.stores*"]
+include = ["arcis*"]
 
 [tool.setuptools.package-data]
 arcis = ["data/*.json"]
