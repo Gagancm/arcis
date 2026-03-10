@@ -55,6 +55,10 @@ Cleanup:
     atexit.register(arcis.close)
 """
 
+# All imports now come from the restructured submodules.
+# arcis.core is a package (arcis/core/__init__.py) that re-exports everything
+# so existing ``from arcis.core import X`` statements continue to work.
+
 from .core import (
     # Main class
     Arcis,
@@ -84,7 +88,7 @@ from .core import (
     validate_uuid,
 )
 
-from .sanitizer import (
+from .sanitizers import (
     sanitize_xss,
     sanitize_sql,
     sanitize_nosql,

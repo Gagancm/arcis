@@ -12,14 +12,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, JSONResponse
 
-from .core import (
-    Sanitizer, 
-    RateLimiter, 
-    RateLimitEntry,
-    SecurityHeaders, 
-    RateLimitExceeded,
-    ErrorHandler,
-)
+from .sanitizers.sanitize import Sanitizer
+from .middleware.rate_limit import RateLimiter, RateLimitExceeded
+from .middleware.headers import SecurityHeaders
+from .middleware.error_handler import ErrorHandler
+from .core.types import RateLimitEntry
 
 
 # ============================================================================

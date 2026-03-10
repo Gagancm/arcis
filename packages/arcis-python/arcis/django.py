@@ -34,15 +34,12 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
-from .core import (
-    Sanitizer, 
-    RateLimiter, 
-    SecurityHeaders, 
-    RateLimitExceeded, 
-    InMemoryStore,
-    ErrorHandler,
-    SafeLogger,
-)
+from .sanitizers.sanitize import Sanitizer
+from .middleware.rate_limit import RateLimiter, RateLimitExceeded
+from .middleware.headers import SecurityHeaders
+from .middleware.error_handler import ErrorHandler
+from .stores.memory import InMemoryStore
+from .logging.safe_logger import SafeLogger
 
 
 def get_client_ip(request: HttpRequest) -> str:

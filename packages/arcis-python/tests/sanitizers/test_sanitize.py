@@ -1,0 +1,181 @@
+"""
+Sanitizer class tests — extracted from tests/test_core.py.
+"""
+
+import pytest
+from arcis.core import Sanitizer, sanitize_string, sanitize_dict
+
+
+class TestSanitizeStringXSS:
+    """Test XSS prevention in sanitize_string."""
+
+    def test_removes_script_tags(self):
+        result = sanitize_string("<script>alert('xss')</script>")
+        assert '<script>' not in result
+        assert '&lt;' in result
+
+    def test_removes_onerror_handler(self):
+        result = sanitize_string('<img onerror="alert(1)" src="x">')
+        assert 'onerror' not in result.lower()
+
+    def test_removes_javascript_protocol(self):
+        result = sanitize_string("javascript:alert(1)")
+        assert 'javascript:' not in result.lower()
+
+    def test_removes_iframe_tags(self):
+        result = sanitize_string('<iframe src="evil.com">')
+        assert '<iframe' not in result.lower()
+
+    def test_encodes_html_entities(self):
+        result = sanitize_string("Hello <b>World</b>")
+        assert '&lt;' in result
+        assert '&gt;' in result
+
+    def test_removes_data_protocol(self):
+        result = sanitize_string("data:text/html,<script>alert(1)</script>")
+        assert '<script>' not in result
+
+
+class TestSanitizeStringSQL:
+    """Test SQL injection prevention in sanitize_string."""
+
+    def test_removes_drop_table(self):
+        result = sanitize_string("'; DROP TABLE users; --")
+        assert 'DROP' not in result.upper()
+
+    def test_removes_or_1_equals_1(self):
+        result = sanitize_string("1 OR 1=1")
+        assert 'OR 1' not in result.upper() or '1=1' not in result
+
+    def test_removes_select(self):
+        result = sanitize_string("SELECT * FROM users")
+        assert 'SELECT' not in result.upper()
+
+    def test_removes_delete(self):
+        result = sanitize_string("1; DELETE FROM users")
+        assert 'DELETE' not in result.upper()
+
+    def test_removes_sql_comments(self):
+        result = sanitize_string("admin'--")
+        assert '--' not in result
+
+    def test_removes_union_and_block_comments(self):
+        result = sanitize_string("1 /* comment */ UNION SELECT")
+        assert 'UNION' not in result.upper()
+
+
+class TestSanitizeStringPathTraversal:
+    """Test path traversal prevention in sanitize_string."""
+
+    def test_removes_unix_path_traversal(self):
+        result = sanitize_string("../../etc/passwd")
+        assert '../' not in result
+
+    def test_removes_windows_path_traversal(self):
+        result = sanitize_string("..\\..\\windows\\system32")
+        assert '..\\'not in result
+
+    def test_removes_url_encoded_traversal(self):
+        result = sanitize_string("%2e%2e%2f%2e%2e%2f")
+        assert '%2e%2e' not in result.lower()
+
+    def test_safe_input_unchanged(self):
+        result = sanitize_string("file.txt")
+        assert result == "file.txt"
+
+
+class TestSanitizeObjectPrototypePollution:
+    """Test prototype pollution prevention in sanitize_object."""
+
+    def test_blocks_proto_key(self):
+        sanitizer = Sanitizer()
+        data = {"__proto__": {"admin": True}, "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__proto__" not in result
+        assert "name" in result
+
+    def test_blocks_constructor_key(self):
+        sanitizer = Sanitizer()
+        data = {"constructor": {"prototype": {}}, "email": "test@test.com"}
+        result = sanitizer.sanitize_dict(data)
+        assert "constructor" not in result
+        assert "email" in result
+
+    def test_blocks_prototype_key(self):
+        sanitizer = Sanitizer()
+        data = {"prototype": {"isAdmin": True}, "value": 123}
+        result = sanitizer.sanitize_dict(data)
+        assert "prototype" not in result
+        assert "value" in result
+
+
+class TestSanitizeObjectNoSQLInjection:
+    """Test NoSQL injection prevention in sanitize_object."""
+
+    def test_blocks_gt_operator(self):
+        sanitizer = Sanitizer()
+        data = {"$gt": "", "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "$gt" not in result
+        assert "name" in result
+
+    def test_blocks_where_operator(self):
+        sanitizer = Sanitizer()
+        data = {"$where": "function(){ return true; }", "id": 1}
+        result = sanitizer.sanitize_dict(data)
+        assert "$where" not in result
+        assert "id" in result
+
+    def test_blocks_multiple_operators(self):
+        sanitizer = Sanitizer()
+        data = {"$ne": None, "$or": [], "valid": True}
+        result = sanitizer.sanitize_dict(data)
+        assert "$ne" not in result
+        assert "$or" not in result
+        assert "valid" in result
+
+    def test_blocks_nested_regex_operator(self):
+        sanitizer = Sanitizer()
+        data = {"username": {"$regex": ".*"}, "password": "test"}
+        result = sanitizer.sanitize_dict(data)
+        if "username" in result and isinstance(result["username"], dict):
+            assert "$regex" not in result["username"]
+        assert "password" in result
+
+
+class TestSanitizeObjectNested:
+    """Test nested object sanitization."""
+
+    def test_sanitizes_nested_objects(self):
+        sanitizer = Sanitizer()
+        data = {"user": {"name": "<script>xss</script>"}}
+        result = sanitizer.sanitize_dict(data)
+        assert '<script>' not in result["user"]["name"]
+
+    def test_sanitizes_array_items(self):
+        sanitizer = Sanitizer()
+        data = {"items": ["<script>alert(1)</script>", "normal"]}
+        result = sanitizer.sanitize_dict(data)
+        assert '<script>' not in result["items"][0]
+        assert result["items"][1] == "normal"
+
+
+class TestSanitizerCallable:
+    """Test Sanitizer as a callable."""
+
+    def test_call_with_string(self):
+        sanitizer = Sanitizer()
+        result = sanitizer("<script>xss</script>")
+        assert '<script>' not in result
+
+    def test_call_with_dict(self):
+        sanitizer = Sanitizer()
+        result = sanitizer({"name": "<script>xss</script>", "$gt": ""})
+        assert '<script>' not in result["name"]
+        assert "$gt" not in result
+
+    def test_call_with_list(self):
+        sanitizer = Sanitizer()
+        result = sanitizer(["<script>1</script>", "<script>2</script>"])
+        assert '<script>' not in result[0]
+        assert '<script>' not in result[1]
