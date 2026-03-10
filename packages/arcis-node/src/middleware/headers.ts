@@ -1,0 +1,110 @@
+/**
+ * @module @arcis/node/middleware/headers
+ * Security headers middleware
+ */
+
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import { HEADERS } from '../core/constants';
+import type { HeaderOptions, HstsOptions } from '../core/types';
+
+/**
+ * Create Express middleware for security headers.
+ * Sets CSP, HSTS, X-Frame-Options, and other security headers.
+ * 
+ * @param options - Header configuration
+ * @returns Express middleware
+ * 
+ * @example
+ * app.use(createHeaders());
+ * 
+ * @example
+ * app.use(createHeaders({
+ *   frameOptions: 'SAMEORIGIN',
+ *   contentSecurityPolicy: "default-src 'self'"
+ * }));
+ */
+export function createHeaders(options: HeaderOptions = {}): RequestHandler {
+  const {
+    contentSecurityPolicy = true,
+    xssFilter = true,
+    noSniff = true,
+    frameOptions = HEADERS.FRAME_OPTIONS,
+    hsts = true,
+    referrerPolicy = HEADERS.REFERRER_POLICY,
+    permissionsPolicy = HEADERS.PERMISSIONS_POLICY,
+    cacheControl = true,
+  } = options;
+
+  return (_req: Request, res: Response, next: NextFunction) => {
+    // Content Security Policy
+    if (contentSecurityPolicy) {
+      const csp = typeof contentSecurityPolicy === 'string' 
+        ? contentSecurityPolicy 
+        : HEADERS.DEFAULT_CSP;
+      res.setHeader('Content-Security-Policy', csp);
+    }
+
+    // X-XSS-Protection (legacy but still useful for older browsers)
+    if (xssFilter) {
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+    }
+
+    // Prevent MIME type sniffing
+    if (noSniff) {
+      res.setHeader('X-Content-Type-Options', HEADERS.CONTENT_TYPE_OPTIONS);
+    }
+
+    // Clickjacking protection
+    if (frameOptions) {
+      res.setHeader('X-Frame-Options', frameOptions);
+    }
+
+    // HTTPS enforcement (HSTS)
+    if (hsts) {
+      const hstsOpts: HstsOptions = typeof hsts === 'object' ? hsts : {};
+      const maxAge = hstsOpts.maxAge ?? HEADERS.HSTS_MAX_AGE;
+      const includeSubDomains = hstsOpts.includeSubDomains !== false;
+      const preload = hstsOpts.preload === true;
+
+      let hstsValue = `max-age=${maxAge}`;
+      if (includeSubDomains) hstsValue += '; includeSubDomains';
+      if (preload) hstsValue += '; preload';
+
+      res.setHeader('Strict-Transport-Security', hstsValue);
+    }
+
+    // Referrer Policy
+    if (referrerPolicy) {
+      res.setHeader('Referrer-Policy', referrerPolicy);
+    }
+
+    // Permissions Policy
+    if (permissionsPolicy) {
+      res.setHeader('Permissions-Policy', permissionsPolicy);
+    }
+
+    // Additional security headers
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+
+    // Cache-Control headers
+    if (cacheControl) {
+      const cacheControlValue = typeof cacheControl === 'string'
+        ? cacheControl
+        : HEADERS.CACHE_CONTROL;
+      res.setHeader('Cache-Control', cacheControlValue);
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+
+    // Remove fingerprinting headers
+    res.removeHeader('X-Powered-By');
+
+    next();
+  };
+}
+
+/**
+ * Alias for createHeaders
+ * @see createHeaders
+ */
+export const securityHeaders = createHeaders;
