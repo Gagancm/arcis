@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
-from shield.fastapi import ArcisMiddleware, get_sanitized_body
+from arcis.fastapi import ArcisMiddleware, get_sanitized_body
 
 
 # ============================================================================
@@ -219,7 +219,7 @@ class TestFastAPICustomConfig:
 # ASYNC RATE LIMITER TESTS
 # ============================================================================
 
-from shield.fastapi import (
+from arcis.fastapi import (
     AsyncInMemoryStore,
     AsyncRateLimiter,
     AsyncRateLimitExceeded,

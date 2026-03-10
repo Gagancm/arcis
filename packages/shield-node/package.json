@@ -55,12 +55,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/aspect-dev/shield"
+    "url": "https://github.com/GagancM/arcis"
   },
   "bugs": {
-    "url": "https://github.com/aspect-dev/shield/issues"
+    "url": "https://github.com/GagancM/arcis/issues"
   },
-  "homepage": "https://github.com/aspect-dev/shield#readme",
+  "homepage": "https://github.com/GagancM/arcis#readme",
   "engines": {
     "node": ">=18.0.0"
   }

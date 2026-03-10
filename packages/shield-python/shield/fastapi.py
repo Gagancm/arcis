@@ -142,7 +142,7 @@ class AsyncRateLimiter:
         result = await limiter.check(request)
         
         # With custom async store (e.g., Redis)
-        from shield.examples.redis_store import AsyncRedisRateLimitStore
+        from arcis.examples.redis_store import AsyncRedisRateLimitStore
         import redis.asyncio as redis
         
         redis_client = redis.Redis()
@@ -298,7 +298,7 @@ class ArcisMiddleware(BaseHTTPMiddleware):
     
     Usage:
         from fastapi import FastAPI
-        from shield.fastapi import ArcisMiddleware
+        from arcis.fastapi import ArcisMiddleware
         
         app = FastAPI()
         app.add_middleware(ArcisMiddleware)
@@ -311,7 +311,7 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         )
         
         # With custom async store (e.g., Redis):
-        from shield.examples.redis_store import AsyncRedisRateLimitStore
+        from arcis.examples.redis_store import AsyncRedisRateLimitStore
         import redis.asyncio as redis
         
         redis_client = redis.Redis()
@@ -343,7 +343,7 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         # Error handler options
         error_handling: bool = True,
         is_dev: bool = False,
-        # Pre-built components (for Shield class)
+        # Pre-built components (for Arcis class)
         sanitizer: Optional[Sanitizer] = None,
         rate_limiter: Optional[RateLimiter] = None,
         async_rate_limiter: Optional[AsyncRateLimiter] = None,  # NEW
@@ -462,7 +462,7 @@ def get_sanitized_body(request: Request) -> Optional[Dict[str, Any]]:
     
     Usage:
         from fastapi import Depends
-        from shield.fastapi import get_sanitized_body
+        from arcis.fastapi import get_sanitized_body
         
         @app.post("/users")
         async def create_user(body: dict = Depends(get_sanitized_body)):
@@ -478,7 +478,7 @@ def get_json(request: Request) -> Optional[Dict[str, Any]]:
     
     Usage:
         from fastapi import Depends
-        from shield.fastapi import get_json
+        from arcis.fastapi import get_json
         
         @app.post("/users")
         async def create_user(data: dict = Depends(get_json)):
@@ -494,7 +494,7 @@ async def get_rate_limit_info(request: Request) -> Optional[Dict[str, Any]]:
     
     Usage:
         from fastapi import Depends
-        from shield.fastapi import get_rate_limit_info
+        from arcis.fastapi import get_rate_limit_info
         
         @app.get("/status")
         async def status(rate_info: dict = Depends(get_rate_limit_info)):
@@ -521,7 +521,7 @@ def create_rate_limit_dependency(
     
     Usage:
         from fastapi import Depends
-        from shield.fastapi import create_rate_limit_dependency
+        from arcis.fastapi import create_rate_limit_dependency
         
         # Global rate limiter
         rate_limit = create_rate_limit_dependency(max_requests=100)

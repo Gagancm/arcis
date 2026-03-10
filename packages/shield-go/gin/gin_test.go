@@ -1,5 +1,5 @@
 /*
-Shield Gin Adapter Tests
+Arcis Gin Adapter Tests
 ========================
 
 Tests for Gin middleware integration aligned with TEST_VECTORS.json spec.
@@ -554,7 +554,7 @@ func TestMiddleware_RemovesFingerprintHeaders(t *testing.T) {
 	r := gin.New()
 	r.Use(Middleware())
 	r.GET("/", func(c *gin.Context) {
-		// Try to set these headers (Shield should remove them)
+		// Try to set these headers (Arcis should remove them)
 		c.Writer.Header().Set("Server", "Apache/2.4.41")
 		c.Writer.Header().Set("X-Powered-By", "PHP/7.4")
 		c.String(http.StatusOK, "OK")

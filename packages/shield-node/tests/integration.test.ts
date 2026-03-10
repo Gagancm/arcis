@@ -1,14 +1,14 @@
 /**
- * Integration Tests for @shield/node
- * 
+ * Integration Tests for @arcis/node
+ *
  * These tests spin up real Express servers and make actual HTTP requests
- * to verify Shield protections work correctly end-to-end.
+ * to verify Arcis protections work correctly end-to-end.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { createServer, Server } from 'http';
-import shield, {
+import arcis, {
   createSanitizer,
   createRateLimiter,
   createHeaders,
@@ -51,18 +51,18 @@ async function createTestServer(setupRoutes: (app: Express) => void): Promise<Te
 }
 
 // ============================================
-// FULL SHIELD MIDDLEWARE INTEGRATION
+// FULL ARCIS MIDDLEWARE INTEGRATION
 // ============================================
 
-describe('Integration: Full Shield Middleware', () => {
+describe('Integration: Full Arcis Middleware', () => {
   let testServer: TestServer;
-  let shieldMiddleware: ReturnType<typeof shield>;
+  let arcisMiddleware: ReturnType<typeof arcis>;
 
   beforeAll(async () => {
-    shieldMiddleware = shield({ rateLimit: { max: 100, windowMs: 60000 } });
-    
+    arcisMiddleware = arcis({ rateLimit: { max: 100, windowMs: 60000 } });
+
     testServer = await createTestServer((app) => {
-      app.use(...shieldMiddleware);
+      app.use(...arcisMiddleware);
       
       app.post('/echo', (req: Request, res: Response) => {
         res.json({ received: req.body });
@@ -75,7 +75,7 @@ describe('Integration: Full Shield Middleware', () => {
   });
 
   afterAll(async () => {
-    (shieldMiddleware as any).close?.();
+    (arcisMiddleware as any).close?.();
     await testServer.close();
   });
 

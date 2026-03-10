@@ -180,7 +180,7 @@ func Cleanup() {
 	activeInstances = nil
 }
 
-// Middleware returns a Gin middleware with default Shield configuration.
+// Middleware returns a Gin middleware with default Arcis configuration.
 func Middleware() gin.HandlerFunc {
 	return MiddlewareWithConfig(DefaultConfig())
 }
@@ -188,7 +188,7 @@ func Middleware() gin.HandlerFunc {
 // MiddlewareWithConfig returns a Gin middleware with custom configuration.
 func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 	// Convert to core Arcis config
-	shieldConfig := arcis.Config{
+	arcisConfig := arcis.Config{
 		Sanitize:          config.Sanitize,
 		SanitizeXSS:       config.SanitizeXSS,
 		SanitizeSQL:       config.SanitizeSQL,
@@ -211,7 +211,7 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 		IsDev:             config.IsDev,
 	}
 
-	sanitizer := arcis.NewSanitizer(shieldConfig)
+	sanitizer := arcis.NewSanitizer(arcisConfig)
 	instance := &arcisInstance{}
 
 	var rateLimiter *arcis.RateLimiter
@@ -226,7 +226,7 @@ func MiddlewareWithConfig(config Config) gin.HandlerFunc {
 
 	var securityHeaders *arcis.SecurityHeaders
 	if config.Headers {
-		securityHeaders = arcis.NewSecurityHeaders(shieldConfig)
+		securityHeaders = arcis.NewSecurityHeaders(arcisConfig)
 	}
 
 	activeInstances = append(activeInstances, instance)
@@ -277,7 +277,7 @@ func Headers() gin.HandlerFunc {
 
 // HeadersWithConfig returns a headers middleware with custom configuration.
 func HeadersWithConfig(config Config) gin.HandlerFunc {
-	shieldConfig := arcis.Config{
+	arcisConfig := arcis.Config{
 		CSP:               config.CSP,
 		FrameOptions:      config.FrameOptions,
 		HSTSMaxAge:        config.HSTSMaxAge,
@@ -288,7 +288,7 @@ func HeadersWithConfig(config Config) gin.HandlerFunc {
 		CacheControlValue: config.CacheControlValue,
 	}
 
-	headers := arcis.NewSecurityHeaders(shieldConfig)
+	headers := arcis.NewSecurityHeaders(arcisConfig)
 
 	return func(c *gin.Context) {
 		for key, value := range headers.GetHeaders() {
@@ -375,7 +375,7 @@ func Sanitizer() gin.HandlerFunc {
 
 // SanitizerWithConfig returns a sanitizer middleware with custom configuration.
 func SanitizerWithConfig(config Config) gin.HandlerFunc {
-	shieldConfig := arcis.Config{
+	arcisConfig := arcis.Config{
 		SanitizeXSS:   config.SanitizeXSS,
 		SanitizeSQL:   config.SanitizeSQL,
 		SanitizeNoSQL: config.SanitizeNoSQL,
@@ -384,7 +384,7 @@ func SanitizerWithConfig(config Config) gin.HandlerFunc {
 		MaxInputSize:  config.MaxInputSize,
 	}
 
-	sanitizer := arcis.NewSanitizer(shieldConfig)
+	sanitizer := arcis.NewSanitizer(arcisConfig)
 
 	return func(c *gin.Context) {
 		c.Set("arcis_sanitizer", sanitizer)

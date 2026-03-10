@@ -895,7 +895,7 @@ class Arcis:
 
     Usage:
         # Flask
-        from shield import Arcis
+        from arcis import Arcis
         Arcis(app)
 
         # Or configure:

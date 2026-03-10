@@ -6,7 +6,7 @@ One-line security for Flask, FastAPI, and Django applications.
 
 Usage:
     # Flask
-    from shield import Arcis
+    from arcis import Arcis
     app = Flask(__name__)
     arcis = Arcis(app)
 
@@ -18,7 +18,7 @@ Usage:
 
     # FastAPI
     from fastapi import FastAPI, Depends
-    from shield.fastapi import ArcisMiddleware, get_json
+    from arcis.fastapi import ArcisMiddleware, get_json
 
     app = FastAPI()
     app.add_middleware(ArcisMiddleware)
@@ -28,7 +28,7 @@ Usage:
         pass  # data is sanitized
 
     # FastAPI with async rate limiter (new!)
-    from shield.fastapi import AsyncRateLimiter, create_rate_limit_dependency
+    from arcis.fastapi import AsyncRateLimiter, create_rate_limit_dependency
 
     # Per-route rate limiting
     strict_limit = create_rate_limit_dependency(max_requests=10)
@@ -38,10 +38,10 @@ Usage:
         pass
 
     # Django (settings.py)
-    MIDDLEWARE = ['shield.django.ArcisMiddleware', ...]
+    MIDDLEWARE = ['arcis.django.ArcisMiddleware', ...]
 
     # In views:
-    from shield.django import get_json
+    from arcis.django import get_json
     def my_view(request):
         data = get_json(request)
 
@@ -151,7 +151,7 @@ if _HAS_ASYNC:
     ])
 
 # Redis store is available as a separate submodule (requires redis extra):
-#   from shield.stores.redis import RedisRateLimitStore       # sync (Flask/Django)
-#   from shield.stores.redis import AsyncRedisRateLimitStore  # async (FastAPI)
+#   from arcis.stores.redis import RedisRateLimitStore       # sync (Flask/Django)
+#   from arcis.stores.redis import AsyncRedisRateLimitStore  # async (FastAPI)
 #
 # Install with: pip install arcis[redis]

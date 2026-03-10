@@ -7,8 +7,8 @@ Enables consistent rate limiting across multiple server instances.
 
 Usage (sync — Flask, Django):
     from redis import Redis
-    from shield.stores.redis import RedisRateLimitStore
-    from shield import RateLimiter
+    from arcis.stores.redis import RedisRateLimitStore
+    from arcis import RateLimiter
 
     redis_client = Redis(host='localhost', port=6379)
     store = RedisRateLimitStore(redis_client)
@@ -16,8 +16,8 @@ Usage (sync — Flask, Django):
 
 Usage (async — FastAPI):
     import redis.asyncio as redis
-    from shield.stores.redis import AsyncRedisRateLimitStore
-    from shield.fastapi import ArcisMiddleware
+    from arcis.stores.redis import AsyncRedisRateLimitStore
+    from arcis.fastapi import ArcisMiddleware
 
     redis_client = redis.Redis(host='localhost', port=6379)
     store = AsyncRedisRateLimitStore(redis_client)
@@ -87,8 +87,8 @@ class RedisRateLimitStore:
 
     Example:
         from redis import Redis
-        from shield.stores.redis import RedisRateLimitStore
-        from shield import RateLimiter
+        from arcis.stores.redis import RedisRateLimitStore
+        from arcis import RateLimiter
 
         store = RedisRateLimitStore(Redis(host='localhost', port=6379))
         limiter = RateLimiter(max_requests=100, window_ms=60000, store=store)
@@ -193,11 +193,11 @@ class AsyncRedisRateLimitStore:
 
     Example:
         import redis.asyncio as redis
-        from shield.stores.redis import AsyncRedisRateLimitStore
-        from shield.fastapi import ShieldMiddleware
+        from arcis.stores.redis import AsyncRedisRateLimitStore
+        from arcis.fastapi import ArcisMiddleware
 
         store = AsyncRedisRateLimitStore(redis.Redis(host='localhost', port=6379))
-        app.add_middleware(ShieldMiddleware, store=store)
+        app.add_middleware(ArcisMiddleware, store=store)
     """
 
     def __init__(
