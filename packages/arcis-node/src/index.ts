@@ -167,7 +167,7 @@ const XSS_PATTERNS = [
   /<iframe/gi,
   /<object/gi,
   /<embed/gi,
-  /data:/gi,
+  /(?:^|[\s"'=])data:/gi,  // data: URIs only (avoid false positives like "metadata:")
   /%3Cscript/gi,           // URL-encoded <script
   /<svg[^>]*onload/gi,     // SVG with onload
 ];
@@ -181,6 +181,9 @@ const SQL_PATTERNS = [
   /\bOR\s+['"][^'"]+['"]\s*=\s*['"][^'"]+['"]/gi,      // OR 'a'='a'
   /\bAND\s+\d+\s*=\s*\d+/gi,                             // AND 1=1
   /\bAND\s+['"][^'"]+['"]\s*=\s*['"][^'"]+['"]/gi,     // AND 'a'='a'
+  // Time-based blind SQL injection
+  /\bSLEEP\s*\(\s*\d+\s*\)/gi,                          // SLEEP(5)
+  /\bBENCHMARK\s*\(/gi,                                   // BENCHMARK(100000, MD5(1))
 ];
 
 // NoSQL patterns kept for reference but validation happens via NOSQL_DANGEROUS_KEYS
@@ -386,19 +389,23 @@ export function createRateLimiter(options: RateLimitOptions = {}): RateLimiterMi
 
   const inMemoryStore: InMemoryRateLimitStore = {};
 
-  // Cleanup interval for in-memory store
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const key of Object.keys(inMemoryStore)) {
-      if (inMemoryStore[key].resetTime < now) {
-        delete inMemoryStore[key];
+  // Cleanup interval for in-memory store (only create if not using external store)
+  let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  
+  if (!externalStore) {
+    cleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const key of Object.keys(inMemoryStore)) {
+        if (inMemoryStore[key].resetTime < now) {
+          delete inMemoryStore[key];
+        }
       }
-    }
-  }, windowMs);
+    }, windowMs);
 
-  // Prevent interval from keeping the process alive (Node.js only)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (cleanupInterval as any).unref?.();
+    // Prevent interval from keeping the process alive (Node.js only)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (cleanupInterval as any).unref?.();
+  }
 
   const handler: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -460,7 +467,9 @@ export function createRateLimiter(options: RateLimitOptions = {}): RateLimiterMi
   // Attach close method for cleanup
   const middleware = handler as RateLimiterMiddleware;
   middleware.close = () => {
-    clearInterval(cleanupInterval);
+    if (cleanupInterval) {
+      clearInterval(cleanupInterval);
+    }
   };
 
   return middleware;

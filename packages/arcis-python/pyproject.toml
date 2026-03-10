@@ -58,6 +58,9 @@ Issues = "https://github.com/GagancM/arcis/issues"
 where = ["."]
 include = ["arcis*", "arcis.stores*"]
 
+[tool.setuptools.package-data]
+arcis = ["data/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

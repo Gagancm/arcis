@@ -1,13 +1,6 @@
 {
   "version": "1.1.0",
   "description": "Arcis Core Security Patterns - Language Agnostic",
-  "_pattern_convention": {
-    "description": "Pattern field naming convention for SDK implementers",
-    "pattern": "The primary regex pattern. May contain ReDoS-vulnerable constructs.",
-    "pattern_safe": "ReDoS-safe alternative pattern. SDKs MUST prefer this when available.",
-    "redos_safe": "Boolean indicating if 'pattern' is ReDoS-safe. If false, use 'pattern_safe'.",
-    "usage": "pattern_str = rule.get('pattern_safe') or rule.get('pattern')"
-  },
   "config": {
     "max_input_size": 1000000,
     "max_recursion_depth": 10,
@@ -64,9 +57,9 @@
         },
         {
           "id": "xss-data-uri",
-          "pattern": "(?:^|[\\s\"'=])data:",
+          "pattern": "data:",
           "flags": "gi",
-          "description": "Detects data: URIs (avoids false positives like 'metadata:')",
+          "description": "Detects data: URIs",
           "redos_safe": true
         },
         {
