@@ -1,5 +1,5 @@
 /*
-Shield Echo Adapter Tests
+Arcis Echo Adapter Tests
 =========================
 
 Tests for Echo middleware integration aligned with TEST_VECTORS.json spec.
@@ -555,7 +555,7 @@ func TestMiddleware_RemovesFingerprintHeaders(t *testing.T) {
 	e := echo.New()
 	e.Use(Middleware())
 	e.GET("/", func(c echo.Context) error {
-		// Try to set these headers (Shield should remove them)
+		// Try to set these headers (Arcis should remove them)
 		c.Response().Header().Set("Server", "Apache/2.4.41")
 		c.Response().Header().Set("X-Powered-By", "PHP/7.4")
 		return c.String(http.StatusOK, "OK")
@@ -579,11 +579,11 @@ func TestMiddleware_RemovesFingerprintHeaders(t *testing.T) {
 // ============================================================================
 
 func TestContextKeys(t *testing.T) {
-	if SanitizerKey != "shield_sanitizer" {
-		t.Errorf("Expected SanitizerKey 'shield_sanitizer', got %s", SanitizerKey)
+	if SanitizerKey != "arcis_sanitizer" {
+		t.Errorf("Expected SanitizerKey 'arcis_sanitizer', got %s", SanitizerKey)
 	}
-	if ValidatedBodyKey != "shield_validated_body" {
-		t.Errorf("Expected ValidatedBodyKey 'shield_validated_body', got %s", ValidatedBodyKey)
+	if ValidatedBodyKey != "arcis_validated_body" {
+		t.Errorf("Expected ValidatedBodyKey 'arcis_validated_body', got %s", ValidatedBodyKey)
 	}
 }
 

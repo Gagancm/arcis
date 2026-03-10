@@ -1,5 +1,5 @@
 """
-Shield Django Integration Tests
+Arcis Django Integration Tests
 ================================
 
 Tests for Django middleware integration.
@@ -16,7 +16,7 @@ pytest.importorskip("django")
 import django
 from django.conf import settings
 
-# Configure Django settings before importing Shield Django module
+# Configure Django settings before importing Arcis Django module
 if not settings.configured:
     settings.configure(
         DEBUG=True,
@@ -34,11 +34,11 @@ if not settings.configured:
 from django.test import RequestFactory, override_settings
 from django.http import JsonResponse
 
-from shield.django import (
-    ShieldMiddleware,
-    ShieldSanitizeMiddleware,
-    ShieldRateLimitMiddleware,
-    ShieldHeadersMiddleware,
+from arcis.django import (
+    ArcisMiddleware,
+    ArcisSanitizeMiddleware,
+    ArcisRateLimitMiddleware,
+    ArcisHeadersMiddleware,
     get_sanitized_body,
     get_client_ip,
 )
@@ -64,8 +64,8 @@ def simple_view():
 
 @pytest.fixture
 def middleware(simple_view):
-    """Shield middleware instance."""
-    return ShieldMiddleware(simple_view)
+    """Arcis middleware instance."""
+    return ArcisMiddleware(simple_view)
 
 
 # ============================================================================
@@ -103,33 +103,33 @@ class TestGetClientIP:
 # MAIN MIDDLEWARE TESTS
 # ============================================================================
 
-class TestShieldMiddleware:
-    """Test the main ShieldMiddleware."""
-    
+class TestArcisMiddleware:
+    """Test the main ArcisMiddleware."""
+
     def test_adds_security_headers(self, rf, middleware):
         request = rf.get('/')
         response = middleware(request)
-        
+
         assert 'Content-Security-Policy' in response
         assert response['X-Content-Type-Options'] == 'nosniff'
         assert response['X-Frame-Options'] == 'DENY'
-    
+
     def test_adds_rate_limit_headers(self, rf, middleware):
         request = rf.get('/')
         response = middleware(request)
-        
+
         assert 'X-RateLimit-Limit' in response
         assert 'X-RateLimit-Remaining' in response
         assert 'X-RateLimit-Reset' in response
-    
+
     def test_returns_200_for_normal_request(self, rf, middleware):
         request = rf.get('/')
         response = middleware(request)
-        
+
         assert response.status_code == 200
-    
+
     def test_sanitizes_json_body(self, rf, simple_view):
-        middleware = ShieldMiddleware(simple_view)
+        middleware = ArcisMiddleware(simple_view)
         
         request = rf.post(
             '/',
@@ -144,12 +144,12 @@ class TestShieldMiddleware:
         assert '<script>' not in sanitized['name']
 
 
-class TestShieldMiddlewareRateLimiting:
-    """Test rate limiting in Shield middleware."""
-    
-    @override_settings(SHIELD_CONFIG={'rate_limit_max': 3, 'rate_limit_window_ms': 60000})
+class TestArcisMiddlewareRateLimiting:
+    """Test rate limiting in Arcis middleware."""
+
+    @override_settings(ARCIS_CONFIG={'rate_limit_max': 3, 'rate_limit_window_ms': 60000})
     def test_blocks_over_limit(self, rf, simple_view):
-        middleware = ShieldMiddleware(simple_view)
+        middleware = ArcisMiddleware(simple_view)
         
         # Make 3 requests (all should pass)
         for i in range(3):
@@ -169,11 +169,11 @@ class TestShieldMiddlewareRateLimiting:
     
     def test_different_ips_have_separate_limits(self, rf, simple_view):
         # Create fresh middleware for this test
-        middleware = ShieldMiddleware.__new__(ShieldMiddleware)
+        middleware = ArcisMiddleware.__new__(ArcisMiddleware)
         middleware.get_response = simple_view
-        
+
         # Configure with low limit
-        from shield.core import Sanitizer, RateLimiter, SecurityHeaders, InMemoryStore
+        from arcis.core import Sanitizer, RateLimiter, SecurityHeaders, InMemoryStore
         middleware.sanitizer = Sanitizer()
         middleware.rate_limiter = RateLimiter(max_requests=2, window_ms=60000)
         middleware.security_headers = SecurityHeaders()
@@ -191,11 +191,11 @@ class TestShieldMiddlewareRateLimiting:
 # STANDALONE MIDDLEWARE TESTS
 # ============================================================================
 
-class TestShieldSanitizeMiddleware:
+class TestArcisSanitizeMiddleware:
     """Test standalone sanitization middleware."""
-    
+
     def test_sanitizes_xss(self, rf, simple_view):
-        middleware = ShieldSanitizeMiddleware(simple_view)
+        middleware = ArcisSanitizeMiddleware(simple_view)
         
         request = rf.post(
             '/',
@@ -209,7 +209,7 @@ class TestShieldSanitizeMiddleware:
         assert '<script>' not in sanitized['html']
     
     def test_sanitizes_sql(self, rf, simple_view):
-        middleware = ShieldSanitizeMiddleware(simple_view)
+        middleware = ArcisSanitizeMiddleware(simple_view)
         
         request = rf.post(
             '/',
@@ -223,7 +223,7 @@ class TestShieldSanitizeMiddleware:
         assert 'DROP' not in sanitized['query'].upper()
     
     def test_ignores_non_json_requests(self, rf, simple_view):
-        middleware = ShieldSanitizeMiddleware(simple_view)
+        middleware = ArcisSanitizeMiddleware(simple_view)
         
         request = rf.post('/', data={'name': '<script>xss</script>'})
         response = middleware(request)
@@ -232,11 +232,11 @@ class TestShieldSanitizeMiddleware:
         assert get_sanitized_body(request) is None
 
 
-class TestShieldRateLimitMiddleware:
+class TestArcisRateLimitMiddleware:
     """Test standalone rate limiting middleware."""
-    
+
     def test_adds_rate_limit_headers(self, rf, simple_view):
-        middleware = ShieldRateLimitMiddleware(simple_view)
+        middleware = ArcisRateLimitMiddleware(simple_view)
         
         request = rf.get('/')
         response = middleware(request)
@@ -245,11 +245,11 @@ class TestShieldRateLimitMiddleware:
         assert 'X-RateLimit-Remaining' in response
 
 
-class TestShieldHeadersMiddleware:
+class TestArcisHeadersMiddleware:
     """Test standalone security headers middleware."""
-    
+
     def test_adds_all_security_headers(self, rf, simple_view):
-        middleware = ShieldHeadersMiddleware(simple_view)
+        middleware = ArcisHeadersMiddleware(simple_view)
         
         request = rf.get('/')
         response = middleware(request)
@@ -265,7 +265,7 @@ class TestShieldHeadersMiddleware:
             response['Server'] = 'Apache/2.4.41'
             return response
         
-        middleware = ShieldHeadersMiddleware(view_with_server_header)
+        middleware = ArcisHeadersMiddleware(view_with_server_header)
         
         request = rf.get('/')
         response = middleware(request)
@@ -277,27 +277,27 @@ class TestShieldHeadersMiddleware:
 # CONFIGURATION TESTS
 # ============================================================================
 
-class TestShieldConfiguration:
+class TestArcisConfiguration:
     """Test middleware configuration via Django settings."""
-    
-    @override_settings(SHIELD_CONFIG={'sanitize': False})
+
+    @override_settings(ARCIS_CONFIG={'sanitize': False})
     def test_can_disable_sanitization(self, rf, simple_view):
-        middleware = ShieldMiddleware(simple_view)
+        middleware = ArcisMiddleware(simple_view)
         assert middleware.sanitizer is None
-    
-    @override_settings(SHIELD_CONFIG={'rate_limit': False})
+
+    @override_settings(ARCIS_CONFIG={'rate_limit': False})
     def test_can_disable_rate_limiting(self, rf, simple_view):
-        middleware = ShieldMiddleware(simple_view)
+        middleware = ArcisMiddleware(simple_view)
         assert middleware.rate_limiter is None
-    
-    @override_settings(SHIELD_CONFIG={'headers': False})
+
+    @override_settings(ARCIS_CONFIG={'headers': False})
     def test_can_disable_headers(self, rf, simple_view):
-        middleware = ShieldMiddleware(simple_view)
+        middleware = ArcisMiddleware(simple_view)
         assert middleware.security_headers is None
-    
-    @override_settings(SHIELD_CONFIG={'csp': "default-src 'none'"})
+
+    @override_settings(ARCIS_CONFIG={'csp': "default-src 'none'"})
     def test_custom_csp(self, rf, simple_view):
-        middleware = ShieldMiddleware(simple_view)
+        middleware = ArcisMiddleware(simple_view)
         
         request = rf.get('/')
         response = middleware(request)

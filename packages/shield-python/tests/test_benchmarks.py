@@ -12,7 +12,7 @@ Run with:
 """
 
 import pytest
-from shield.core import (
+from arcis.core import (
     Sanitizer,
     RateLimiter,
     SecurityHeaders,

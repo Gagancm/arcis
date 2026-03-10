@@ -1,6 +1,6 @@
 """
-Shield Flask Integration Tests
-===============================
+Arcis Flask Integration Tests
+==============================
 
 Tests for Flask middleware integration.
 Run with: pytest tests/test_flask.py -v
@@ -15,8 +15,8 @@ pytest.importorskip("flask")
 
 from flask import Flask, jsonify, request, g
 
-from shield.core import (
-    Shield,
+from arcis.core import (
+    Arcis,
     Sanitizer,
     RateLimiter,
     RateLimitExceeded,
@@ -34,11 +34,11 @@ from shield.core import (
 
 @pytest.fixture
 def app():
-    """Create a Flask app with Shield protection."""
+    """Create a Flask app with Arcis protection."""
     app = Flask(__name__)
     app.config['TESTING'] = True
     
-    shield = Shield(app)
+    arcis = Arcis(app)
     
     @app.route('/')
     def index():
@@ -54,13 +54,13 @@ def app():
     def health():
         return jsonify({"status": "ok"})
     
-    # Store shield instance for cleanup
-    app.shield = shield
+    # Store arcis instance for cleanup
+    app.arcis = arcis
     
     yield app
     
     # Cleanup
-    shield.close()
+    arcis.close()
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def rate_limited_app():
     app = Flask(__name__)
     app.config['TESTING'] = True
     
-    shield = Shield(app, rate_limit_max=3, rate_limit_window_ms=60000)
+    arcis = Arcis(app, rate_limit_max=3, rate_limit_window_ms=60000)
     
     @app.route('/')
     def index():
@@ -85,11 +85,11 @@ def rate_limited_app():
     def health():
         return jsonify({"status": "ok"})
     
-    app.shield = shield
+    app.arcis = arcis
     
     yield app
     
-    shield.close()
+    arcis.close()
 
 
 @pytest.fixture
@@ -353,12 +353,12 @@ class TestFlaskSanitization:
 # ============================================================================
 
 class TestFlaskCustomConfig:
-    """Test custom Shield configuration."""
+    """Test custom Arcis configuration."""
     
     def test_custom_csp(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, csp="default-src 'none'")
+        arcis = Arcis(app, csp="default-src 'none'")
         
         @app.route('/')
         def index():
@@ -368,12 +368,12 @@ class TestFlaskCustomConfig:
         response = client.get('/')
         
         assert response.headers.get('Content-Security-Policy') == "default-src 'none'"
-        shield.close()
+        arcis.close()
     
     def test_disable_sanitization(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, sanitize=False)
+        arcis = Arcis(app, sanitize=False)
         
         @app.route('/echo', methods=['POST'])
         def echo():
@@ -387,12 +387,12 @@ class TestFlaskCustomConfig:
         result = response.get_json()
         # Without sanitization, script tag should remain
         assert '<script>' in result['received']['name']
-        shield.close()
+        arcis.close()
     
     def test_disable_rate_limiting(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, rate_limit=False)
+        arcis = Arcis(app, rate_limit=False)
         
         @app.route('/')
         def index():
@@ -403,12 +403,12 @@ class TestFlaskCustomConfig:
         
         # Rate limit headers should not be present
         assert 'X-RateLimit-Limit' not in response.headers
-        shield.close()
+        arcis.close()
     
     def test_disable_headers(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, headers=False)
+        arcis = Arcis(app, headers=False)
         
         @app.route('/')
         def index():
@@ -419,12 +419,12 @@ class TestFlaskCustomConfig:
         
         # CSP header should not be present
         assert 'Content-Security-Policy' not in response.headers
-        shield.close()
+        arcis.close()
     
     def test_custom_rate_limit_max(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, rate_limit_max=50)
+        arcis = Arcis(app, rate_limit_max=50)
         
         @app.route('/')
         def index():
@@ -434,13 +434,13 @@ class TestFlaskCustomConfig:
         response = client.get('/')
         
         assert response.headers.get('X-RateLimit-Limit') == '50'
-        shield.close()
+        arcis.close()
     
     def test_disable_specific_sanitizers(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
         # Disable SQL sanitization only
-        shield = Shield(app, sanitize_sql=False, sanitize_xss=True)
+        arcis = Arcis(app, sanitize_sql=False, sanitize_xss=True)
         
         @app.route('/echo', methods=['POST'])
         def echo():
@@ -454,7 +454,7 @@ class TestFlaskCustomConfig:
         result = response.get_json()
         assert '<script>' not in result['received']['name']
         
-        shield.close()
+        arcis.close()
 
 
 # ============================================================================
@@ -467,7 +467,7 @@ class TestFlaskErrorHandler:
     def test_error_handler_production_mode(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, is_dev=False)
+        arcis = Arcis(app, is_dev=False)
         
         @app.route('/error')
         def error_route():
@@ -482,12 +482,12 @@ class TestFlaskErrorHandler:
         assert 'stack' not in data
         assert '10.0.0.1' not in str(data)
         
-        shield.close()
+        arcis.close()
     
     def test_error_handler_development_mode(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, is_dev=True)
+        arcis = Arcis(app, is_dev=True)
         
         @app.route('/error')
         def error_route():
@@ -501,7 +501,7 @@ class TestFlaskErrorHandler:
         assert 'stack' in data
         assert 'Something broke' in str(data.get('details', ''))
         
-        shield.close()
+        arcis.close()
 
 
 # ============================================================================
@@ -514,7 +514,7 @@ class TestFlaskRateLimitingPerIP:
     def test_different_ips_have_separate_limits(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, rate_limit_max=2)
+        arcis = Arcis(app, rate_limit_max=2)
         
         @app.route('/')
         def index():
@@ -532,7 +532,7 @@ class TestFlaskRateLimitingPerIP:
         response = client.get('/')
         assert response.status_code == 429
         
-        shield.close()
+        arcis.close()
 
 
 # ============================================================================
@@ -545,7 +545,7 @@ class TestFlaskCombinedScenarios:
     def test_protected_api_endpoint(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, rate_limit_max=100)
+        arcis = Arcis(app, rate_limit_max=100)
         
         @app.route('/api/comments', methods=['POST'])
         def create_comment():
@@ -578,12 +578,12 @@ class TestFlaskCombinedScenarios:
         
         assert response.status_code == 201
         
-        shield.close()
+        arcis.close()
     
     def test_all_protections_work_together(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app, rate_limit_max=100)
+        arcis = Arcis(app, rate_limit_max=100)
         
         @app.route('/api/users', methods=['POST'])
         def create_user():
@@ -620,7 +620,7 @@ class TestFlaskCombinedScenarios:
         assert 'X-RateLimit-Limit' in response.headers
         assert 'X-RateLimit-Remaining' in response.headers
         
-        shield.close()
+        arcis.close()
 
 
 # ============================================================================
@@ -633,7 +633,7 @@ class TestFlaskSchemaValidation:
     def test_schema_validation_integration(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app)
+        arcis = Arcis(app)
         
         user_schema = {
             'email': {'type': 'email', 'required': True},
@@ -700,7 +700,7 @@ class TestFlaskSchemaValidation:
         assert 'isAdmin' not in data['user']
         assert 'secretField' not in data['user']
         
-        shield.close()
+        arcis.close()
 
 
 # ============================================================================
@@ -711,7 +711,7 @@ class TestFlaskSafeLogger:
     """Test safe logger with Flask."""
     
     def test_logger_redacts_sensitive_data(self):
-        from shield.core import SafeLogger
+        from arcis.core import SafeLogger
         
         logger = SafeLogger()
         
@@ -737,10 +737,10 @@ class TestFlaskSafeLogger:
 class TestFlaskCleanup:
     """Test proper cleanup of resources."""
     
-    def test_shield_close(self):
+    def test_arcis_close(self):
         app = Flask(__name__)
         app.config['TESTING'] = True
-        shield = Shield(app)
+        arcis = Arcis(app)
         
         @app.route('/')
         def index():
@@ -751,7 +751,7 @@ class TestFlaskCleanup:
         assert response.status_code == 200
         
         # Close should not raise
-        shield.close()
+        arcis.close()
         
         # Requests should still work after close (fail-open)
         response = client.get('/')

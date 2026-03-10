@@ -1,18 +1,18 @@
 """
-Shield Django Integration
-=========================
+Arcis Django Integration
+========================
 
-Django middleware for Shield security.
+Django middleware for Arcis security.
 
 Usage:
     # settings.py
     MIDDLEWARE = [
-        'shield.django.ShieldMiddleware',
+        'arcis.django.ArcisMiddleware',
         # ... other middleware
     ]
-    
+
     # Optional configuration in settings.py
-    SHIELD_CONFIG = {
+    ARCIS_CONFIG = {
         'sanitize': True,
         'sanitize_xss': True,
         'sanitize_sql': True,
@@ -56,35 +56,35 @@ def get_client_ip(request: HttpRequest) -> str:
     return request.META.get('REMOTE_ADDR', 'unknown')
 
 
-class ShieldMiddleware(MiddlewareMixin):
+class ArcisMiddleware(MiddlewareMixin):
     """
     Django middleware that provides XSS/SQL/NoSQL/Path sanitization,
     rate limiting, security headers, and error handling.
-    
+
     Usage:
         # settings.py
         MIDDLEWARE = [
-            'shield.django.ShieldMiddleware',
+            'arcis.django.ArcisMiddleware',
             ...
         ]
-        
-        # Optional: Configure Shield
-        SHIELD_CONFIG = {
+
+        # Optional: Configure Arcis
+        ARCIS_CONFIG = {
             'rate_limit_max': 50,
             'sanitize_sql': False,  # Disable SQL sanitization
             'is_dev': True,  # Show error details
         }
     """
-    
+
     # Shared rate limiter store across all instances
     _rate_limit_store = InMemoryStore()
     _rate_limiter: Optional[RateLimiter] = None
-    
+
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
-        
+
         # Load configuration from Django settings
-        config = getattr(settings, 'SHIELD_CONFIG', {})
+        config = getattr(settings, 'ARCIS_CONFIG', {})
         
         # Initialize sanitizer
         sanitize_enabled = config.get('sanitize', True)
@@ -100,14 +100,14 @@ class ShieldMiddleware(MiddlewareMixin):
         
         # Initialize rate limiter (shared across instances)
         rate_limit_enabled = config.get('rate_limit', True)
-        if rate_limit_enabled and ShieldMiddleware._rate_limiter is None:
-            ShieldMiddleware._rate_limiter = RateLimiter(
+        if rate_limit_enabled and ArcisMiddleware._rate_limiter is None:
+            ArcisMiddleware._rate_limiter = RateLimiter(
                 max_requests=config.get('rate_limit_max', 100),
                 window_ms=config.get('rate_limit_window_ms', 60000),
                 key_func=lambda req: get_client_ip(req),
                 store=self._rate_limit_store,
             )
-        self.rate_limiter = ShieldMiddleware._rate_limiter if rate_limit_enabled else None
+        self.rate_limiter = ArcisMiddleware._rate_limiter if rate_limit_enabled else None
         
         # Initialize security headers
         headers_enabled = config.get('headers', True)
@@ -146,9 +146,9 @@ class ShieldMiddleware(MiddlewareMixin):
             if 'application/json' in content_type:
                 try:
                     body = json.loads(request.body.decode('utf-8'))
-                    request._shield_sanitized_body = self.sanitizer(body)
-                    # Also accessible as request.shield_json
-                    request.shield_json = request._shield_sanitized_body
+                    request._arcis_sanitized_body = self.sanitizer(body)
+                    # Also accessible as request.arcis_json
+                    request.arcis_json = request._arcis_sanitized_body
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
         
@@ -187,13 +187,13 @@ def get_sanitized_body(request: HttpRequest) -> Optional[Dict[str, Any]]:
     Get the sanitized request body from a Django request.
     
     Usage:
-        from shield.django import get_sanitized_body
+        from arcis.django import get_sanitized_body
         
         def my_view(request):
             data = get_sanitized_body(request)
             # data is sanitized
     """
-    return getattr(request, '_shield_sanitized_body', None)
+    return getattr(request, '_arcis_sanitized_body', None)
 
 
 def get_json(request: HttpRequest) -> Optional[Dict[str, Any]]:
@@ -201,7 +201,7 @@ def get_json(request: HttpRequest) -> Optional[Dict[str, Any]]:
     Alias for get_sanitized_body - more intuitive name.
     
     Usage:
-        from shield.django import get_json
+        from arcis.django import get_json
         
         def my_view(request):
             data = get_json(request)
@@ -210,21 +210,21 @@ def get_json(request: HttpRequest) -> Optional[Dict[str, Any]]:
     return get_sanitized_body(request)
 
 
-class ShieldSanitizeMiddleware(MiddlewareMixin):
+class ArcisSanitizeMiddleware(MiddlewareMixin):
     """
     Standalone sanitization middleware for Django.
     Use this if you only want sanitization without rate limiting.
-    
+
     Usage:
         MIDDLEWARE = [
-            'shield.django.ShieldSanitizeMiddleware',
+            'arcis.django.ArcisSanitizeMiddleware',
             ...
         ]
     """
-    
+
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
-        config = getattr(settings, 'SHIELD_CONFIG', {})
+        config = getattr(settings, 'ARCIS_CONFIG', {})
         self.sanitizer = Sanitizer(
             xss=config.get('sanitize_xss', True),
             sql=config.get('sanitize_sql', True),
@@ -238,40 +238,40 @@ class ShieldSanitizeMiddleware(MiddlewareMixin):
             if 'application/json' in content_type:
                 try:
                     body = json.loads(request.body.decode('utf-8'))
-                    request._shield_sanitized_body = self.sanitizer(body)
-                    request.shield_json = request._shield_sanitized_body
+                    request._arcis_sanitized_body = self.sanitizer(body)
+                    request.arcis_json = request._arcis_sanitized_body
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
         
         return self.get_response(request)
 
 
-class ShieldRateLimitMiddleware(MiddlewareMixin):
+class ArcisRateLimitMiddleware(MiddlewareMixin):
     """
     Standalone rate limiting middleware for Django.
-    
+
     Usage:
         MIDDLEWARE = [
-            'shield.django.ShieldRateLimitMiddleware',
+            'arcis.django.ArcisRateLimitMiddleware',
             ...
         ]
     """
-    
+
     _store = InMemoryStore()
     _rate_limiter: Optional[RateLimiter] = None
-    
+
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
-        config = getattr(settings, 'SHIELD_CONFIG', {})
-        
-        if ShieldRateLimitMiddleware._rate_limiter is None:
-            ShieldRateLimitMiddleware._rate_limiter = RateLimiter(
+        config = getattr(settings, 'ARCIS_CONFIG', {})
+
+        if ArcisRateLimitMiddleware._rate_limiter is None:
+            ArcisRateLimitMiddleware._rate_limiter = RateLimiter(
                 max_requests=config.get('rate_limit_max', 100),
                 window_ms=config.get('rate_limit_window_ms', 60000),
                 key_func=lambda req: get_client_ip(req),
                 store=self._store,
             )
-        self.rate_limiter = ShieldRateLimitMiddleware._rate_limiter
+        self.rate_limiter = ArcisRateLimitMiddleware._rate_limiter
     
     def __call__(self, request: HttpRequest) -> HttpResponse:
         try:
@@ -293,20 +293,20 @@ class ShieldRateLimitMiddleware(MiddlewareMixin):
         return response
 
 
-class ShieldHeadersMiddleware(MiddlewareMixin):
+class ArcisHeadersMiddleware(MiddlewareMixin):
     """
     Standalone security headers middleware for Django.
-    
+
     Usage:
         MIDDLEWARE = [
-            'shield.django.ShieldHeadersMiddleware',
+            'arcis.django.ArcisHeadersMiddleware',
             ...
         ]
     """
-    
+
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
-        config = getattr(settings, 'SHIELD_CONFIG', {})
+        config = getattr(settings, 'ARCIS_CONFIG', {})
         self.security_headers = SecurityHeaders(
             content_security_policy=config.get('csp'),
         )
@@ -326,21 +326,21 @@ class ShieldHeadersMiddleware(MiddlewareMixin):
         return response
 
 
-class ShieldErrorMiddleware(MiddlewareMixin):
+class ArcisErrorMiddleware(MiddlewareMixin):
     """
     Standalone error handling middleware for Django.
     Hides error details in production.
-    
+
     Usage:
         MIDDLEWARE = [
-            'shield.django.ShieldErrorMiddleware',
+            'arcis.django.ArcisErrorMiddleware',
             ...
         ]
     """
-    
+
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
-        config = getattr(settings, 'SHIELD_CONFIG', {})
+        config = getattr(settings, 'ARCIS_CONFIG', {})
         is_dev = config.get('is_dev', settings.DEBUG)
         self.error_handler = ErrorHandler(is_dev=is_dev)
     

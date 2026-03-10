@@ -8,7 +8,7 @@ Run with: pytest tests/ -v
 
 import pytest
 import time
-from shield.core import (
+from arcis.core import (
     Sanitizer,
     RateLimiter,
     RateLimitExceeded,

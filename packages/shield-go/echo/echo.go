@@ -188,7 +188,7 @@ func Cleanup() {
 	activeInstances = nil
 }
 
-// Middleware returns an Echo middleware with default Shield configuration.
+// Middleware returns an Echo middleware with default Arcis configuration.
 func Middleware() echo.MiddlewareFunc {
 	return MiddlewareWithConfig(DefaultConfig())
 }
@@ -196,7 +196,7 @@ func Middleware() echo.MiddlewareFunc {
 // MiddlewareWithConfig returns an Echo middleware with custom configuration.
 func MiddlewareWithConfig(config Config) echo.MiddlewareFunc {
 	// Convert to core Arcis config
-	shieldConfig := arcis.Config{
+	arcisConfig := arcis.Config{
 		Sanitize:          config.Sanitize,
 		SanitizeXSS:       config.SanitizeXSS,
 		SanitizeSQL:       config.SanitizeSQL,
@@ -219,7 +219,7 @@ func MiddlewareWithConfig(config Config) echo.MiddlewareFunc {
 		IsDev:             config.IsDev,
 	}
 
-	sanitizer := arcis.NewSanitizer(shieldConfig)
+	sanitizer := arcis.NewSanitizer(arcisConfig)
 	instance := &arcisInstance{}
 
 	var rateLimiter *arcis.RateLimiter
@@ -234,7 +234,7 @@ func MiddlewareWithConfig(config Config) echo.MiddlewareFunc {
 
 	var securityHeaders *arcis.SecurityHeaders
 	if config.Headers {
-		securityHeaders = arcis.NewSecurityHeaders(shieldConfig)
+		securityHeaders = arcis.NewSecurityHeaders(arcisConfig)
 	}
 
 	activeInstances = append(activeInstances, instance)
@@ -286,7 +286,7 @@ func Headers() echo.MiddlewareFunc {
 
 // HeadersWithConfig returns a headers middleware with custom configuration.
 func HeadersWithConfig(config Config) echo.MiddlewareFunc {
-	shieldConfig := arcis.Config{
+	arcisConfig := arcis.Config{
 		CSP:               config.CSP,
 		FrameOptions:      config.FrameOptions,
 		HSTSMaxAge:        config.HSTSMaxAge,
@@ -297,7 +297,7 @@ func HeadersWithConfig(config Config) echo.MiddlewareFunc {
 		CacheControlValue: config.CacheControlValue,
 	}
 
-	headers := arcis.NewSecurityHeaders(shieldConfig)
+	headers := arcis.NewSecurityHeaders(arcisConfig)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -387,7 +387,7 @@ func Sanitizer() echo.MiddlewareFunc {
 
 // SanitizerWithConfig returns a sanitizer middleware with custom configuration.
 func SanitizerWithConfig(config Config) echo.MiddlewareFunc {
-	shieldConfig := arcis.Config{
+	arcisConfig := arcis.Config{
 		SanitizeXSS:   config.SanitizeXSS,
 		SanitizeSQL:   config.SanitizeSQL,
 		SanitizeNoSQL: config.SanitizeNoSQL,
@@ -396,7 +396,7 @@ func SanitizerWithConfig(config Config) echo.MiddlewareFunc {
 		MaxInputSize:  config.MaxInputSize,
 	}
 
-	sanitizer := arcis.NewSanitizer(shieldConfig)
+	sanitizer := arcis.NewSanitizer(arcisConfig)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
