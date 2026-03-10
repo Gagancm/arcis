@@ -93,10 +93,12 @@ export function createSafeLogger(options: LogOptions = {}): SafeLogger {
  * Removes newlines (log injection prevention), applies patterns, and truncates.
  */
 function redactString(str: string, maxLength: number, patterns: RegExp[]): string {
-  // Remove newlines and control characters (log injection prevention)
+  // Remove newlines/tabs (log injection prevention) and genuine control characters.
+  // Only strip C0/C1 control chars and null bytes — preserve all printable Unicode
+  // (CJK, Cyrillic, Arabic, etc.) so multilingual content isn't silently lost.
   let safe = str
     .replace(/[\r\n\t]/g, ' ')
-    .replace(/[^\x20-\x7E\u00A0-\u024F]/g, ''); // Keep printable ASCII + common Latin
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\x80-\x9F]/g, '');
 
   // Apply custom redaction patterns
   for (const pattern of patterns) {

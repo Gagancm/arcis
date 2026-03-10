@@ -40,12 +40,24 @@ export function createRateLimiter(options: RateLimitOptions = {}): RateLimiterMi
     windowMs = RATE_LIMIT.DEFAULT_WINDOW_MS,
     message = RATE_LIMIT.DEFAULT_MESSAGE,
     statusCode = RATE_LIMIT.DEFAULT_STATUS_CODE,
-    keyGenerator = (req) => req.ip || req.socket?.remoteAddress || 'unknown',
+    keyGenerator = (req) => {
+      const ip = req.ip ?? req.socket?.remoteAddress;
+      if (!ip) {
+        console.warn(
+          '[arcis] Rate limiter: cannot resolve client IP. All unresolvable clients share ' +
+          'one counter. Set Express trust proxy if behind a reverse proxy.'
+        );
+        return 'unknown';
+      }
+      return ip;
+    },
     skip,
     store: externalStore,
   } = options;
 
-  const inMemoryStore: InMemoryRateLimitStore = {};
+  // Object.create(null) avoids prototype pollution if keyGenerator ever
+  // returns '__proto__', 'constructor', or 'prototype'.
+  const inMemoryStore = Object.create(null) as InMemoryRateLimitStore;
 
   // Cleanup interval for in-memory store (only create if not using external store)
   let cleanupInterval: ReturnType<typeof setInterval> | null = null;

@@ -25,10 +25,10 @@ describe('createSanitizer middleware', () => {
       expect(mockNext).toHaveBeenCalled();
     });
 
-    it('should sanitize SQL injection in req.body', () => {
+    it('should sanitize SQL injection in req.body (sanitize mode)', () => {
       const req = mockRequest({ body: { query: "'; DROP TABLE users;--" } });
       const res = mockResponse();
-      const sanitizer = createSanitizer();
+      const sanitizer = createSanitizer({ mode: 'sanitize' });
 
       sanitizer(req as Request, res as Response, mockNext);
 
@@ -37,22 +37,19 @@ describe('createSanitizer middleware', () => {
     });
 
     it('should block prototype pollution in req.body', () => {
-      const req = mockRequest({
-        body: {
-          __proto__: { admin: true },
-          constructor: { prototype: { admin: true } },
-          name: 'test',
-        },
-      });
+      // Object literals cannot create a real __proto__ own-key in V8.
+      // JSON.parse() creates a plain object with __proto__ as an actual own key.
+      const body = JSON.parse('{"__proto__":{"admin":true},"constructor":{"prototype":{"admin":true}},"name":"test"}');
+      const req = mockRequest({ body });
       const res = mockResponse();
       const sanitizer = createSanitizer();
 
       sanitizer(req as Request, res as Response, mockNext);
 
-      const body = req.body as Record<string, unknown>;
-      expect(Object.hasOwn(body, '__proto__')).toBe(false);
-      expect(Object.hasOwn(body, 'constructor')).toBe(false);
-      expect(body.name).toBe('test');
+      const sanitized = req.body as Record<string, unknown>;
+      expect(Object.hasOwn(sanitized, '__proto__')).toBe(false);
+      expect(Object.hasOwn(sanitized, 'constructor')).toBe(false);
+      expect(sanitized.name).toBe('test');
     });
 
     it('should block NoSQL operators in req.body', () => {
@@ -76,10 +73,10 @@ describe('createSanitizer middleware', () => {
   });
 
   describe('Query Sanitization', () => {
-    it('should sanitize req.query', () => {
+    it('should sanitize req.query (sanitize mode)', () => {
       const req = mockRequest({ query: { search: "'; DROP TABLE users;--" } });
       const res = mockResponse();
-      const sanitizer = createSanitizer();
+      const sanitizer = createSanitizer({ mode: 'sanitize' });
 
       sanitizer(req as Request, res as Response, mockNext);
 
@@ -110,7 +107,7 @@ describe('createSanitizer middleware', () => {
   });
 
   describe('Nested Object Sanitization', () => {
-    it('should sanitize nested objects', () => {
+    it('should sanitize nested objects (sanitize mode)', () => {
       const req = mockRequest({
         body: {
           user: {
@@ -122,7 +119,7 @@ describe('createSanitizer middleware', () => {
         },
       });
       const res = mockResponse();
-      const sanitizer = createSanitizer();
+      const sanitizer = createSanitizer({ mode: 'sanitize' });
 
       sanitizer(req as Request, res as Response, mockNext);
 
@@ -131,14 +128,14 @@ describe('createSanitizer middleware', () => {
       expect(body.user.profile.bio.toUpperCase()).not.toContain('DROP');
     });
 
-    it('should sanitize arrays', () => {
+    it('should sanitize arrays (sanitize mode)', () => {
       const req = mockRequest({
         body: {
           items: ['<script>alert(1)</script>', 'normal', "'; DROP TABLE users;--"],
         },
       });
       const res = mockResponse();
-      const sanitizer = createSanitizer();
+      const sanitizer = createSanitizer({ mode: 'sanitize' });
 
       sanitizer(req as Request, res as Response, mockNext);
 

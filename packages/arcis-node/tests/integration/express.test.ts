@@ -24,27 +24,35 @@ describe('Integration: Full Arcis Middleware', () => {
   beforeAll(async () => {
     arcisMiddleware = arcis({ rateLimit: { max: 100, windowMs: 60000 } });
 
-    testServer = await createTestServer((app) => {
-      app.use(...arcisMiddleware);
-      
-      app.post('/echo', (req: Request, res: Response) => {
-        res.json({ received: req.body, keys: Object.keys(req.body) });
+    try {
+      testServer = await createTestServer((app) => {
+        app.use(...arcisMiddleware);
+
+        app.post('/echo', (req: Request, res: Response) => {
+          res.json({ received: req.body, keys: Object.keys(req.body) });
+        });
+
+        app.get('/ping', (_req: Request, res: Response) => {
+          res.json({ pong: true });
+        });
       });
-      
-      app.get('/ping', (_req: Request, res: Response) => {
-        res.json({ pong: true });
-      });
-    });
+    } catch (err) {
+      arcisMiddleware.close();
+      throw err;
+    }
   });
 
   afterAll(async () => {
-    (arcisMiddleware as any).close?.();
-    await testServer.close();
+    arcisMiddleware?.close();
+    await testServer?.close();
   });
 
   it('should apply all security headers', async () => {
-    const res = await fetch(`${testServer.url}/ping`);
-    
+    // Simulate HTTPS via x-forwarded-proto so HSTS header is included.
+    const res = await fetch(`${testServer.url}/ping`, {
+      headers: { 'x-forwarded-proto': 'https' },
+    });
+
     expect(res.headers.get('Content-Security-Policy')).toBeTruthy();
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(res.headers.get('X-Frame-Options')).toBe('DENY');
@@ -71,7 +79,6 @@ describe('Integration: Full Arcis Middleware', () => {
     
     const data = await res.json();
     expect(data.received.name).not.toContain('<script>');
-    expect(data.received.name).toContain('&lt;');
   });
 
   it('should sanitize SQL injection in request body', async () => {
@@ -80,9 +87,15 @@ describe('Integration: Full Arcis Middleware', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: "'; DROP TABLE users; --" }),
     });
-    
-    const data = await res.json();
-    expect(data.received.query.toUpperCase()).not.toContain('DROP');
+
+    // Default arcis() uses reject mode — SQL injection returns 400.
+    // arcis() does not include errorHandler, so the response may be HTML (Express default).
+    // We verify: (a) status is 400, (b) the /echo route was NOT reached (no JSON body).
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    // The echo route returns { received, keys } — if sanitizer blocked correctly,
+    // that JSON must not be present in the response.
+    expect(body).not.toContain('"received"');
   });
 
   it('should block prototype pollution', async () => {
@@ -125,16 +138,16 @@ describe('Integration: Sanitizer Middleware', () => {
 
   beforeAll(async () => {
     testServer = await createTestServer((app) => {
-      app.use(createSanitizer());
-      
+      app.use(createSanitizer({ mode: 'sanitize' }));
+
       app.post('/body', (req: Request, res: Response) => {
         res.json({ body: req.body });
       });
-      
+
       app.get('/query', (req: Request, res: Response) => {
         res.json({ query: req.query });
       });
-      
+
       app.get('/params/:id', (req: Request, res: Response) => {
         res.json({ params: req.params });
       });
@@ -142,7 +155,7 @@ describe('Integration: Sanitizer Middleware', () => {
   });
 
   afterAll(async () => {
-    await testServer.close();
+    await testServer?.close();
   });
 
   it('should sanitize body - XSS vectors', async () => {
@@ -322,8 +335,11 @@ describe('Integration: Security Headers Middleware', () => {
       app.get('/', (_req, res) => res.json({ ok: true }));
     });
 
-    const res = await fetch(`${testServer.url}/`);
-    
+    // Simulate HTTPS via x-forwarded-proto so HSTS header is included.
+    const res = await fetch(`${testServer.url}/`, {
+      headers: { 'x-forwarded-proto': 'https' },
+    });
+
     // CSP
     const csp = res.headers.get('Content-Security-Policy');
     expect(csp).toBeTruthy();
@@ -407,7 +423,7 @@ describe('Integration: Validator Middleware', () => {
   });
 
   afterAll(async () => {
-    await testServer.close();
+    await testServer?.close();
   });
 
   it('should validate required fields', async () => {
@@ -517,13 +533,14 @@ describe('Integration: Error Handler Middleware', () => {
       app.get('/not-found', () => {
         const error: any = new Error('Resource not found');
         error.statusCode = 404;
+        error.expose = true; // opt-in to exposing this message to clients
         throw error;
       });
       app.use(errorHandler(false));
     });
 
     const res = await fetch(`${testServer.url}/not-found`);
-    
+
     expect(res.status).toBe(404);
     const data = await res.json();
     expect(data.error).toBe('Resource not found');

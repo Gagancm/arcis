@@ -106,6 +106,13 @@ function validateField(
         errors.push(ERRORS.VALIDATION.INVALID_FORMAT(field));
         isValid = false;
       }
+      // Enum check runs before sanitization so the raw value is compared.
+      // Sanitizing first could silently modify the value and cause a mismatch
+      // with enum entries that contain characters the sanitizer would strip.
+      if (isValid && rules.enum && !rules.enum.includes(value)) {
+        errors.push(ERRORS.VALIDATION.INVALID_ENUM(field, rules.enum));
+        isValid = false;
+      }
       if (isValid && rules.sanitize !== false) {
         typedValue = sanitizeString(value);
       }
@@ -190,8 +197,8 @@ function validateField(
       break;
   }
 
-  // Enum validation
-  if (isValid && rules.enum && !rules.enum.includes(typedValue)) {
+  // Enum validation for non-string types (strings check enum before sanitizing above).
+  if (isValid && rules.enum && rules.type !== 'string' && !rules.enum.includes(typedValue)) {
     errors.push(ERRORS.VALIDATION.INVALID_ENUM(field, rules.enum));
     isValid = false;
   }
@@ -199,8 +206,14 @@ function validateField(
   // Custom validation
   if (isValid && rules.custom) {
     const customResult = rules.custom(typedValue);
+    if (customResult === undefined) {
+      throw new TypeError(
+        `Custom validator for field "${field}" returned undefined. ` +
+        'Return true to pass, false to fail, or a string error message.'
+      );
+    }
     if (customResult !== true) {
-      errors.push(typeof customResult === 'string' ? customResult : `${field} is invalid`);
+      errors.push(typeof customResult === 'string' && customResult.length > 0 ? customResult : `${field} is invalid`);
       isValid = false;
     }
   }

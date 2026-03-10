@@ -4,9 +4,10 @@
  */
 
 import type { RequestHandler } from 'express';
-import type { 
-  ArcisOptions, 
+import type {
+  ArcisOptions,
   ArcisFunction,
+  ArcisMiddlewareStack,
   HeaderOptions,
   RateLimitOptions,
   SanitizeOptions,
@@ -46,9 +47,9 @@ import { createSafeLogger } from '../logging';
  * // Cleanup on shutdown
  * const middleware = arcis();
  * app.use(middleware);
- * process.on('SIGTERM', () => (middleware as any).close?.());
+ * process.on('SIGTERM', () => middleware.close());
  */
-export function arcis(options: ArcisOptions = {}): RequestHandler[] {
+export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
   const middlewares: RequestHandler[] = [];
   const cleanupFns: (() => void)[] = [];
 
@@ -78,8 +79,8 @@ export function arcis(options: ArcisOptions = {}): RequestHandler[] {
     middlewares.push(createSanitizer(sanitizeOpts));
   }
 
-  // Add close method to clean up resources
-  const result = middlewares as RequestHandler[] & { close?: () => void };
+  // Attach close() directly on the array so callers can clean up without any-casts.
+  const result = middlewares as ArcisMiddlewareStack;
   result.close = () => {
     for (const fn of cleanupFns) {
       fn();

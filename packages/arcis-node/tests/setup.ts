@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 import express, { Express } from 'express';
 import { createServer, Server } from 'http';
+import { NOSQL_DANGEROUS_KEYS, DANGEROUS_PROTO_KEYS } from '../src/core/constants';
 
 // =============================================================================
 // MOCK EXPRESS OBJECTS
@@ -160,7 +161,6 @@ export function isSanitized(input: string): boolean {
  * Checks if an object is free of dangerous keys
  */
 export function hasDangerousKeys(obj: Record<string, unknown>): boolean {
-  const dangerousKeys = ['__proto__', 'constructor', 'prototype', '$gt', '$where', '$ne', '$or', '$and', '$regex'];
   const keys = Object.keys(obj);
-  return keys.some(key => dangerousKeys.includes(key));
+  return keys.some(key => NOSQL_DANGEROUS_KEYS.has(key) || DANGEROUS_PROTO_KEYS.has(key));
 }

@@ -21,6 +21,11 @@ export class MemoryStore implements RateLimitStore {
   private windowMs: number;
 
   constructor(windowMs: number = RATE_LIMIT.DEFAULT_WINDOW_MS) {
+    if (!Number.isFinite(windowMs) || windowMs < RATE_LIMIT.MIN_WINDOW_MS) {
+      throw new RangeError(
+        `MemoryStore: windowMs must be a finite number >= ${RATE_LIMIT.MIN_WINDOW_MS} (got ${windowMs})`
+      );
+    }
     this.windowMs = windowMs;
     this.startCleanup();
   }
@@ -29,6 +34,13 @@ export class MemoryStore implements RateLimitStore {
    * Start the cleanup interval to remove expired entries.
    */
   private startCleanup(): void {
+    // Clamp the cleanup interval between 30 s and 5 min regardless of windowMs.
+    // Running it every windowMs is fine for typical windows but would fire every
+    // second for short windows (e.g. windowMs: 1000), causing O(n) GC pressure.
+    const CLEANUP_MIN_MS = 30_000;
+    const CLEANUP_MAX_MS = 300_000;
+    const cleanupMs = Math.min(Math.max(this.windowMs, CLEANUP_MIN_MS), CLEANUP_MAX_MS);
+
     this.cleanupInterval = setInterval(() => {
       const now = Date.now();
       for (const [key, entry] of this.store.entries()) {
@@ -36,7 +48,7 @@ export class MemoryStore implements RateLimitStore {
           this.store.delete(key);
         }
       }
-    }, this.windowMs);
+    }, cleanupMs);
 
     // Prevent interval from keeping the process alive
     if (typeof this.cleanupInterval.unref === 'function') {

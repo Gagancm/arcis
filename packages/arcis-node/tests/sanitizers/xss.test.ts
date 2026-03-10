@@ -79,29 +79,36 @@ describe('sanitizeXss', () => {
   });
 
   describe('HTML Entity Encoding', () => {
-    it('should encode < character', () => {
-      const result = sanitizeXss('<div>');
+    // HTML encoding is opt-in via the htmlEncode parameter (3rd arg).
+    // Default is false — REST APIs should not encode entities into stored data.
+    it('should encode < character when htmlEncode=true', () => {
+      const result = sanitizeXss('<div>', false, true);
       expect(result).toContain('&lt;');
     });
 
-    it('should encode > character', () => {
-      const result = sanitizeXss('>test<');
+    it('should encode > character when htmlEncode=true', () => {
+      const result = sanitizeXss('>test<', false, true);
       expect(result).toContain('&gt;');
     });
 
-    it('should encode " character', () => {
-      const result = sanitizeXss('"quoted"');
+    it('should encode " character when htmlEncode=true', () => {
+      const result = sanitizeXss('"quoted"', false, true);
       expect(result).toContain('&quot;');
     });
 
-    it("should encode ' character", () => {
-      const result = sanitizeXss("'single'");
+    it("should encode ' character when htmlEncode=true", () => {
+      const result = sanitizeXss("'single'", false, true);
       expect(result).toContain('&#x27;');
     });
 
-    it('should encode & character', () => {
-      const result = sanitizeXss('a & b');
+    it('should encode & character when htmlEncode=true', () => {
+      const result = sanitizeXss('a & b', false, true);
       expect(result).toContain('&amp;');
+    });
+
+    it('should NOT encode entities by default (REST API mode)', () => {
+      const result = sanitizeXss('a & b');
+      expect(result).toBe('a & b');
     });
   });
 
@@ -110,13 +117,26 @@ describe('sanitizeXss', () => {
       const result = sanitizeXss('<script>alert(1)</script>', true);
       expect(result.wasSanitized).toBe(true);
       expect(result.threats.length).toBeGreaterThan(0);
-      expect(result.threats[0].type).toBe('xss');
+      const threat = result.threats[0];
+      expect(threat.type).toBe('xss');
+      // Each threat must carry the matched text and the pattern that caught it
+      expect(typeof threat.original).toBe('string');
+      expect(threat.original.length).toBeGreaterThan(0);
+      expect(typeof threat.pattern).toBe('string');
+      expect(threat.pattern.length).toBeGreaterThan(0);
+    });
+
+    it('should capture the exact matched content in original', () => {
+      const result = sanitizeXss('<script>evil()</script>', true);
+      const scriptThreat = result.threats.find(t => t.original.includes('script'));
+      expect(scriptThreat).toBeDefined();
+      expect(scriptThreat!.original).toContain('script');
     });
 
     it('should return no threats for safe input', () => {
       const result = sanitizeXss('Hello World', true);
-      // Even safe text gets encoded, so wasSanitized might be false for pure alphanumeric
       expect(result.value).toBeDefined();
+      expect(result.threats.length).toBe(0);
     });
   });
 
@@ -158,8 +178,12 @@ describe('detectXss', () => {
     expect(detectXss('javascript:alert(1)')).toBe(true);
   });
 
-  it('should detect HTML special characters', () => {
-    expect(detectXss('<div>test</div>')).toBe(true);
+  it('should detect dangerous HTML tags', () => {
+    // <div> is not XSS — only actually dangerous patterns like <script>, <iframe> etc.
+    expect(detectXss('<script>alert(1)</script>')).toBe(true);
+    expect(detectXss('<iframe src="evil.com">')).toBe(true);
+    // Plain tags without dangerous attributes are not XSS
+    expect(detectXss('<div>test</div>')).toBe(false);
   });
 
   it('should return false for safe input', () => {

@@ -14,6 +14,7 @@ export interface RedisClientLike {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, mode?: string, duration?: number): Promise<unknown>;
   setex(key: string, seconds: number, value: string): Promise<unknown>;
+  expire(key: string, seconds: number): Promise<unknown>;
   incr(key: string): Promise<number>;
   decr(key: string): Promise<number>;
   del(key: string): Promise<number>;
@@ -75,19 +76,24 @@ export class RedisStore implements RateLimitStore {
       return null;
     }
     
+    const count = parseInt(countStr, 10);
+    if (isNaN(count)) {
+      // Corrupt value in Redis — treat as if key doesn't exist
+      return null;
+    }
+
     return {
-      count: parseInt(countStr, 10),
+      count,
       resetTime: Date.now() + (ttl * 1000),
     };
   }
 
   async set(key: string, entry: RateLimitEntry): Promise<void> {
     const redisKey = this.getKey(key);
-    const ttlSec = Math.ceil((entry.resetTime - Date.now()) / 1000);
-    
-    if (ttlSec > 0) {
-      await this.client.setex(redisKey, ttlSec, entry.count.toString());
-    }
+    // Clamp to at least 1 second — Math.ceil can produce 0 or negative values
+    // when entry.resetTime is in the past due to Redis latency or clock skew.
+    const ttlSec = Math.max(1, Math.ceil((entry.resetTime - Date.now()) / 1000));
+    await this.client.setex(redisKey, ttlSec, entry.count.toString());
   }
 
   async increment(key: string): Promise<number> {
@@ -95,13 +101,14 @@ export class RedisStore implements RateLimitStore {
     
     // INCR creates key with value 1 if it doesn't exist
     const count = await this.client.incr(redisKey);
-    
-    // Set expiry only on first increment (when count is 1)
+
+    // Set expiry only on first increment using EXPIRE, which sets the TTL
+    // without overwriting the value (unlike SET ... EX which would reset the
+    // counter if two requests increment concurrently before expiry is set).
     if (count === 1) {
-      // Use EXPIRE to set TTL (setex would overwrite the value)
-      await this.client.set(redisKey, count.toString(), 'EX', this.windowSec);
+      await this.client.expire(redisKey, this.windowSec);
     }
-    
+
     return count;
   }
 

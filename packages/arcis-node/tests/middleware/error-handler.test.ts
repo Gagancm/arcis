@@ -38,8 +38,9 @@ describe('errorHandler', () => {
       const res = mockResponse();
       const next = vi.fn();
       const handler = errorHandler(false);
-      const error: Error & { statusCode?: number } = new Error('Not found');
+      const error: Error & { statusCode?: number; expose?: boolean } = new Error('Not found');
       error.statusCode = 404;
+      error.expose = true;
 
       handler(error, req as Request, res as Response, next as NextFunction);
 

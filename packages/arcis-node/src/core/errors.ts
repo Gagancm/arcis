@@ -9,13 +9,18 @@
 export class ArcisError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
+  /** Whether the error message is safe to expose to API clients. */
+  public readonly expose: boolean;
 
   constructor(message: string, statusCode = 500, code = 'ARCIS_ERROR') {
     super(message);
     this.name = 'ArcisError';
     this.statusCode = statusCode;
     this.code = code;
-    
+    // Client errors (4xx) have controlled messages — safe to expose.
+    // Server errors (5xx) may contain internal details — hide by default.
+    this.expose = statusCode < 500;
+
     // Maintains proper stack trace for where error was thrown (V8 engines)
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, this.constructor);

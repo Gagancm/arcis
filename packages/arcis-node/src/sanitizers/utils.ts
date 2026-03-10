@@ -25,10 +25,12 @@ export function encodeHtmlEntities(str: string): string {
  * @returns True if plain object
  */
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.prototype.toString.call(value) === '[object Object]'
-  );
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  // Check the actual prototype chain rather than toString, which can be spoofed
+  // via Symbol.toStringTag. Accepts both Object.prototype (plain {}) and null
+  // prototype objects (Object.create(null)).
+  const proto = Object.getPrototypeOf(value as object);
+  return proto === Object.prototype || proto === null;
 }

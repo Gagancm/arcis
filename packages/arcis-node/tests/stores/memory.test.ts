@@ -173,7 +173,7 @@ describe('MemoryStore', () => {
     });
 
     it('should stop cleanup interval', async () => {
-      store = new MemoryStore(100); // Short window for test
+      store = new MemoryStore(1000); // Minimum valid window
       await store.close();
       
       // Store should be closed, adding new entries should not be cleaned up
@@ -209,24 +209,26 @@ describe('MemoryStore', () => {
   describe('Cleanup', () => {
     it('should clean up expired entries periodically', async () => {
       vi.useFakeTimers();
-      
-      store = new MemoryStore(1000); // 1 second window
-      await store.set('key1', { count: 1, resetTime: Date.now() + 500 });
-      await store.set('key2', { count: 2, resetTime: Date.now() + 2000 });
-      
-      expect(store.size).toBe(2);
-      
-      // Advance time past first entry's expiration and trigger cleanup
-      vi.advanceTimersByTime(1100);
-      
-      // The cleanup runs on interval, give it time
-      vi.advanceTimersByTime(1000);
-      
-      // First entry should be cleaned up, second should remain
-      expect(store.size).toBeLessThanOrEqual(2);
-      
-      vi.useRealTimers();
-      await store.close();
+
+      try {
+        store = new MemoryStore(1000); // 1 second window
+        await store.set('key1', { count: 1, resetTime: Date.now() + 500 });
+        await store.set('key2', { count: 2, resetTime: Date.now() + 2000 });
+
+        expect(store.size).toBe(2);
+
+        // Advance time past first entry's expiration and trigger cleanup
+        vi.advanceTimersByTime(1100);
+
+        // The cleanup runs on interval, give it time
+        vi.advanceTimersByTime(1000);
+
+        // First entry should be cleaned up, second should remain
+        expect(store.size).toBeLessThanOrEqual(2);
+      } finally {
+        vi.useRealTimers();
+        await store.close();
+      }
     });
   });
 

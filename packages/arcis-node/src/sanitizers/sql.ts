@@ -3,7 +3,7 @@
  * SQL injection prevention
  */
 
-import { SQL_PATTERNS, BLOCKED } from '../core/constants';
+import { SQL_PATTERNS } from '../core/constants';
 import type { SanitizeResult, ThreatInfo } from '../core/types';
 
 /**
@@ -16,7 +16,7 @@ import type { SanitizeResult, ThreatInfo } from '../core/types';
  * 
  * @example
  * sanitizeSql("'; DROP TABLE users; --")
- * // Returns: "'; [BLOCKED] TABLE users[BLOCKED] [BLOCKED]"
+ * // Returns: "';  TABLE users  "
  */
 export function sanitizeSql(input: string, collectThreats?: false): string;
 export function sanitizeSql(input: string, collectThreats: true): SanitizeResult;
@@ -51,7 +51,9 @@ export function sanitizeSql(input: string, collectThreats = false): string | San
         }
       }
       
-      value = value.replace(pattern, BLOCKED);
+      // Replace the matched content with a space to avoid concatenating surrounding
+      // tokens into new dangerous strings (e.g. "SELECTname" after stripping "SELECT").
+      value = value.replace(pattern, ' ');
       wasSanitized = true;
     }
   }

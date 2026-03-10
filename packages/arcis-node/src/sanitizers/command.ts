@@ -3,7 +3,7 @@
  * Command injection prevention
  */
 
-import { COMMAND_PATTERNS, BLOCKED } from '../core/constants';
+import { COMMAND_PATTERNS } from '../core/constants';
 import type { SanitizeResult, ThreatInfo } from '../core/types';
 
 /**
@@ -16,7 +16,7 @@ import type { SanitizeResult, ThreatInfo } from '../core/types';
  * 
  * @example
  * sanitizeCommand("file.txt; rm -rf /")
- * // Returns: "file.txt[BLOCKED] [BLOCKED] -rf /"
+ * // Returns: "file.txt  rm -rf /"
  */
 export function sanitizeCommand(input: string, collectThreats?: false): string;
 export function sanitizeCommand(input: string, collectThreats: true): SanitizeResult;
@@ -51,7 +51,7 @@ export function sanitizeCommand(input: string, collectThreats = false): string |
         }
       }
       
-      value = value.replace(pattern, BLOCKED);
+      value = value.replace(pattern, ' ');
       wasSanitized = true;
     }
   }

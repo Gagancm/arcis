@@ -35,7 +35,7 @@ export function createHeaders(options: HeaderOptions = {}): RequestHandler {
     cacheControl = true,
   } = options;
 
-  return (_req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     // Content Security Policy
     if (contentSecurityPolicy) {
       const csp = typeof contentSecurityPolicy === 'string' 
@@ -60,7 +60,20 @@ export function createHeaders(options: HeaderOptions = {}): RequestHandler {
     }
 
     // HTTPS enforcement (HSTS)
-    if (hsts) {
+    // Only send HSTS over HTTPS — sending it over HTTP can brick HTTP-only
+    // development servers and confuses browsers that cache the directive.
+    // X-Forwarded-Proto is client-supplied so we validate the extracted value
+    // is exactly 'https' or 'http' before trusting it.
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)
+      ?.split(',')[0]
+      .trim()
+      .toLowerCase();
+    const trustedForwardedProto = forwardedProto === 'https' || forwardedProto === 'http'
+      ? forwardedProto
+      : undefined;
+    const isHttps = req.secure || trustedForwardedProto === 'https';
+
+    if (hsts && isHttps) {
       const hstsOpts: HstsOptions = typeof hsts === 'object' ? hsts : {};
       const maxAge = hstsOpts.maxAge ?? HEADERS.HSTS_MAX_AGE;
       const includeSubDomains = hstsOpts.includeSubDomains !== false;

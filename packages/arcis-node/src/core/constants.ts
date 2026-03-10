@@ -62,15 +62,20 @@ export const HEADERS = {
 // =============================================================================
 // XSS PATTERNS (ReDoS-safe)
 // =============================================================================
+
+/**
+ * Detection patterns — used to flag whether a string contains XSS payloads.
+ * Must stay in sync with XSS_REMOVE_PATTERNS below.
+ */
 export const XSS_PATTERNS = [
   /** Script tags (ReDoS-safe version) */
   /<script[^>]*>[\s\S]*?<\/script>/gi,
-  /** javascript: protocol */
-  /javascript:/gi,
+  /** javascript: protocol (allow optional spaces before colon) */
+  /javascript\s*:/gi,
   /** vbscript: protocol */
-  /vbscript:/gi,
-  /** Event handlers (onclick, onerror, etc.) */
-  /on\w+\s*=/gi,
+  /vbscript\s*:/gi,
+  /** Event handlers (onclick, onerror, etc.) — any separator before attribute */
+  /(?:[\s/])on\w+\s*=/gi,
   /** iframe tags */
   /<iframe/gi,
   /** object tags */
@@ -85,24 +90,60 @@ export const XSS_PATTERNS = [
   /<svg[^>]*onload/gi,
 ] as const;
 
+/**
+ * Removal patterns — used by sanitizeXss() to strip dangerous content.
+ * More targeted than XSS_PATTERNS: each pattern captures the full dangerous
+ * substring (tag, attribute + value, protocol) so it can be replaced safely.
+ * Must stay in sync with XSS_PATTERNS above.
+ */
+export const XSS_REMOVE_PATTERNS = [
+  /** Full script blocks (content + tags) */
+  /<script[^>]*>[\s\S]*?<\/script>/gi,
+  /** Standalone/unclosed script tags */
+  /<script[^>]*>/gi,
+  /** iframe — full block and partial/unclosed */
+  /<iframe[^>]*>[\s\S]*?<\/iframe>/gi,
+  /<iframe[^>]*/gi,
+  /** object — full block and partial/unclosed */
+  /<object[^>]*>[\s\S]*?<\/object>/gi,
+  /<object[^>]*/gi,
+  /** embed tags */
+  /<embed[^>]*/gi,
+  /** SVG with inline event handlers */
+  /<svg[^>]*onload[^>]*>/gi,
+  /** URL-encoded script tags */
+  /%3Cscript/gi,
+  /** Event handlers with quoted values: onclick="...", onerror='...' */
+  /(?:[\s/])on\w+\s*=\s*["'][^"']*["']/gi,
+  /** Event handlers with unquoted values: onload=value */
+  /(?:[\s/])on\w+\s*=\s*[^\s>]*/gi,
+  /** javascript: and vbscript: protocols (allow optional spaces before colon) */
+  /javascript\s*:/gi,
+  /vbscript\s*:/gi,
+  /** data: URIs with HTML/script content */
+  /data\s*:\s*text\/html[^>\s]*/gi,
+] as const;
+
 // =============================================================================
 // SQL INJECTION PATTERNS
 // =============================================================================
 export const SQL_PATTERNS = [
   /** SQL keywords */
   /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE)\b)/gi,
-  /** SQL comments */
-  /(--|\/\*|\*\/)/g,
+  /** SQL comments: ANSI (--), C-style (slash-star ... star-slash), MySQL (#) */
+  /(--|\/\*|\*\/|#)/g,
   /** SQL statement separators */
   /(;|\|\||&&)/g,
   /** Boolean injection: OR 1=1 */
   /\bOR\s+\d+\s*=\s*\d+/gi,
-  /** Boolean injection: OR 'a'='a' */
-  /\bOR\s+['"][^'"]+['"]\s*=\s*['"][^'"]+['"]/gi,
+  /** Boolean injection: OR 'a'='a' or OR "a"="a" (including mixed quotes) */
+  /\bOR\s+(['"])[^'"]*\1\s*=\s*(['"])[^'"]*\2/gi,
+  /\bOR\s+('[^']*'|"[^"]*")\s*=\s*('[^']*'|"[^"]*")/gi,
   /** Boolean injection: AND 1=1 */
   /\bAND\s+\d+\s*=\s*\d+/gi,
-  /** Boolean injection: AND 'a'='a' */
-  /\bAND\s+['"][^'"]+['"]\s*=\s*['"][^'"]+['"]/gi,
+  /** Boolean injection: AND 'a'='a' or AND "a"="a" (including mixed quotes) */
+  /\bAND\s+(['"])[^'"]*\1\s*=\s*(['"])[^'"]*\2/gi,
+  /\bAND\s+('[^']*'|"[^"]*")\s*=\s*('[^']*'|"[^"]*")/gi,
   /** Time-based blind: SLEEP() */
   /\bSLEEP\s*\(\s*\d+\s*\)/gi,
   /** Time-based blind: BENCHMARK() */
@@ -117,20 +158,37 @@ export const PATH_PATTERNS = [
   /\.\.\//g,
   /** Windows path traversal */
   /\.\.\\/g,
-  /** URL-encoded traversal */
+  /** URL-encoded traversal (%2e%2e) */
   /%2e%2e/gi,
-  /** Double URL-encoded traversal */
+  /** Double URL-encoded traversal (%252e) */
   /%252e/gi,
+  /** Mixed encoding: ..%2F */
+  /\.\.%2F/gi,
+  /** Mixed encoding: %2e./ and .%2e/ */
+  /%2e\.[\\/]/gi,
+  /\.%2e[\\/]/gi,
+  /** Fully URL-encoded: %2e%2e%2f */
+  /%2e%2e%2f/gi,
+  /** Null byte injection in paths */
+  /\0/g,
 ] as const;
 
 // =============================================================================
 // COMMAND INJECTION PATTERNS
 // =============================================================================
 export const COMMAND_PATTERNS = [
-  /** Shell metacharacters */
-  /[;&|`$()]/g,
-  /** Dangerous commands */
-  /\b(cat|ls|rm|mv|cp|wget|curl|nc|bash|sh|python|perl|ruby|php)\b/gi,
+  /**
+   * Shell metacharacters that enable command chaining/substitution.
+   * Bare ( and ) are excluded — they appear in common legitimate values
+   * (function calls in code fields, math expressions, etc.).
+   * Command substitution is caught by the $( combined pattern below.
+   * NOTE: ';', '&', '|' may appear in legitimate URL query strings
+   * and Markdown; consider disabling command checking (command: false)
+   * for fields that intentionally allow those characters.
+   */
+  /[;&|`]/g,
+  /** Command substitution: $( ... ) — matched as a pair to reduce false positives */
+  /\$\(/g,
 ] as const;
 
 // =============================================================================
@@ -146,8 +204,19 @@ export const DANGEROUS_PROTO_KEYS = new Set([
 
 /** MongoDB operators to block */
 export const NOSQL_DANGEROUS_KEYS = new Set([
+  // Comparison
   '$gt', '$gte', '$lt', '$lte', '$ne', '$eq', '$in', '$nin',
-  '$and', '$or', '$not', '$exists', '$type', '$regex', '$where', '$expr',
+  // Logical
+  '$and', '$or', '$not', '$nor',
+  // Element / evaluation
+  '$exists', '$type', '$regex', '$where', '$expr', '$mod', '$text',
+  // Array
+  '$elemMatch', '$all', '$size',
+  // JavaScript execution (critical)
+  '$function', '$accumulator',
+  // Aggregation pipeline operators (injectable via $lookup etc.)
+  '$lookup', '$match', '$project', '$group', '$sort', '$limit', '$skip',
+  '$unwind', '$addFields', '$replaceRoot',
 ]);
 
 // =============================================================================
@@ -176,10 +245,18 @@ export const REDACTION = {
 // VALIDATION PATTERNS
 // =============================================================================
 export const VALIDATION = {
-  /** Email regex pattern */
-  EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-  /** URL regex pattern */
-  URL: /^https?:\/\/[^\s/$.?#].[^\s]*$/,
+  /**
+   * Email regex pattern.
+   * Rejects consecutive dots in local part (e.g. test..foo@example.com),
+   * leading/trailing dots, and other common invalid forms.
+   */
+  EMAIL: /^[^\s@.][^\s@]*(?:\.[^\s@.][^\s@]*)*@[^\s@]+\.[^\s@]+$/,
+  /**
+   * URL regex pattern.
+   * Only allows http:// and https:// — explicitly rejects javascript:,
+   * data:, vbscript:, and other dangerous URI schemes.
+   */
+  URL: /^https?:\/\/[^\s/$.?#][^\s]*$/,
   /** UUID regex pattern (v4) */
   UUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
 } as const;

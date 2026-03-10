@@ -27,7 +27,6 @@ describe('Conformance: sanitizeString', () => {
     it('must not contain <script> tags', () => {
       const result = sanitizeString("<script>alert('xss')</script>");
       expect(result).not.toContain('<script>');
-      expect(result).toContain('&lt;');
     });
 
     it('must not contain event handlers (onerror)', () => {
@@ -45,8 +44,10 @@ describe('Conformance: sanitizeString', () => {
       expect(result).not.toContain('<iframe');
     });
 
-    it('must encode < and > as HTML entities', () => {
-      const result = sanitizeString('Hello <b>World</b>');
+    it('must encode < and > as HTML entities when htmlEncode is enabled', () => {
+      // htmlEncode is opt-in — REST APIs should not encode stored data.
+      // Use { htmlEncode: true } only when rendering into HTML templates.
+      const result = sanitizeString('Hello <b>World</b>', { htmlEncode: true });
       expect(result).toContain('&lt;');
       expect(result).toContain('&gt;');
     });
@@ -58,35 +59,35 @@ describe('Conformance: sanitizeString', () => {
   });
 
   describe('SQL Injection Prevention', () => {
-    it('must not contain DROP keyword', () => {
-      const result = sanitizeString("'; DROP TABLE users; --");
+    // Default mode is 'reject' — sanitizeString throws SecurityThreatError on SQL patterns.
+    // Pass { mode: 'sanitize' } to strip instead of reject (e.g. for lenient legacy inputs).
+    it('must reject DROP keyword (reject mode)', () => {
+      expect(() => sanitizeString("'; DROP TABLE users; --")).toThrow();
+    });
+
+    it('must strip DROP keyword (sanitize mode)', () => {
+      const result = sanitizeString("'; DROP TABLE users; --", { mode: 'sanitize' });
       expect(result.toUpperCase()).not.toContain('DROP');
     });
 
-    it('must not contain OR 1=1 pattern', () => {
-      const result = sanitizeString('1 OR 1=1');
-      expect(result.toUpperCase()).not.toMatch(/OR\s+1/);
+    it('must reject OR 1=1 pattern (reject mode)', () => {
+      expect(() => sanitizeString('1 OR 1=1')).toThrow();
     });
 
-    it('must not contain SELECT keyword', () => {
-      const result = sanitizeString('SELECT * FROM users');
-      expect(result.toUpperCase()).not.toContain('SELECT');
+    it('must reject SELECT keyword (reject mode)', () => {
+      expect(() => sanitizeString('SELECT * FROM users')).toThrow();
     });
 
-    it('must not contain DELETE keyword', () => {
-      const result = sanitizeString('1; DELETE FROM users');
-      expect(result.toUpperCase()).not.toContain('DELETE');
+    it('must reject DELETE keyword (reject mode)', () => {
+      expect(() => sanitizeString('1; DELETE FROM users')).toThrow();
     });
 
-    it('must not contain -- comment syntax', () => {
-      const result = sanitizeString("admin'--");
-      expect(result).not.toContain('--');
+    it('must reject -- comment syntax (reject mode)', () => {
+      expect(() => sanitizeString("admin'--")).toThrow();
     });
 
-    it('must not contain UNION or /* comment */', () => {
-      const result = sanitizeString('1 /* comment */ UNION SELECT');
-      expect(result.toUpperCase()).not.toContain('UNION');
-      expect(result).not.toContain('/*');
+    it('must reject UNION and /* comment */ (reject mode)', () => {
+      expect(() => sanitizeString('1 /* comment */ UNION SELECT')).toThrow();
     });
   });
 
@@ -273,7 +274,43 @@ describe('Conformance: Rate Limiter', () => {
 
       const res = await fetch(`${testServer.url}/test`);
       expect(res.headers.get('X-RateLimit-Reset')).toBeTruthy();
-      
+
+      rateLimiter.close();
+      await testServer.close();
+    });
+  });
+
+  describe('Per-IP Isolation', () => {
+    it('should track limits independently per IP', async () => {
+      // Use a custom keyGenerator so we can simulate two different "IPs"
+      // without needing real network interfaces.
+      let callCount = 0;
+      rateLimiter = createRateLimiter({
+        max: 2,
+        windowMs: 60000,
+        keyGenerator: (_req) => {
+          // Alternate between two keys on successive calls
+          callCount++;
+          return callCount <= 2 ? 'ip-A' : 'ip-B';
+        },
+      });
+      testServer = await createTestServer((app) => {
+        app.use(rateLimiter);
+        app.get('/test', (_req, res) => res.json({ ok: true }));
+      });
+
+      // First two requests are keyed to ip-A — both should pass (max: 2)
+      const r1 = await fetch(`${testServer.url}/test`);
+      const r2 = await fetch(`${testServer.url}/test`);
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+
+      // Next two requests are keyed to ip-B — should also pass (separate bucket)
+      const r3 = await fetch(`${testServer.url}/test`);
+      const r4 = await fetch(`${testServer.url}/test`);
+      expect(r3.status).toBe(200);
+      expect(r4.status).toBe(200);
+
       rateLimiter.close();
       await testServer.close();
     });
@@ -333,15 +370,18 @@ describe('Conformance: Security Headers', () => {
     await testServer.close();
   });
 
-  it('should set Strict-Transport-Security with max-age', async () => {
+  it('should set Strict-Transport-Security with max-age over HTTPS', async () => {
+    // HSTS is only sent over HTTPS — simulate via x-forwarded-proto header.
     const testServer = await createTestServer((app) => {
       app.use(createHeaders());
       app.get('/', (_req, res) => res.json({ ok: true }));
     });
 
-    const res = await fetch(`${testServer.url}/`);
+    const res = await fetch(`${testServer.url}/`, {
+      headers: { 'x-forwarded-proto': 'https' },
+    });
     expect(res.headers.get('Strict-Transport-Security')).toContain('max-age=');
-    
+
     await testServer.close();
   });
 

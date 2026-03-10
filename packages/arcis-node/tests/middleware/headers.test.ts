@@ -54,8 +54,8 @@ describe('createHeaders', () => {
       expect(res.setHeader).toHaveBeenCalledWith('X-Frame-Options', 'DENY');
     });
 
-    it('should set Strict-Transport-Security', () => {
-      const req = mockRequest();
+    it('should set Strict-Transport-Security over HTTPS', () => {
+      const req = mockRequest({ secure: true });
       const res = mockResponse();
       const headers = createHeaders();
 
@@ -157,7 +157,7 @@ describe('createHeaders', () => {
 
   describe('HSTS Configuration', () => {
     it('should allow custom maxAge', () => {
-      const req = mockRequest();
+      const req = mockRequest({ secure: true });
       const res = mockResponse();
       const headers = createHeaders({ hsts: { maxAge: 86400 } });
 
@@ -170,7 +170,7 @@ describe('createHeaders', () => {
     });
 
     it('should support preload directive', () => {
-      const req = mockRequest();
+      const req = mockRequest({ secure: true });
       const res = mockResponse();
       const headers = createHeaders({ hsts: { maxAge: 31536000, preload: true } });
 
@@ -183,7 +183,7 @@ describe('createHeaders', () => {
     });
 
     it('should allow disabling includeSubDomains', () => {
-      const req = mockRequest();
+      const req = mockRequest({ secure: true });
       const res = mockResponse();
       const headers = createHeaders({ hsts: { maxAge: 31536000, includeSubDomains: false } });
 
@@ -252,13 +252,16 @@ describe('securityHeaders', () => {
 describe('Integration: Security Headers', () => {
   let testServer: TestServer;
 
-  it('should set all default headers on HTTP response', async () => {
+  it('should set all default headers on HTTPS response', async () => {
     testServer = await createTestServer((app) => {
       app.use(createHeaders());
       app.get('/', (_req, res) => res.json({ ok: true }));
     });
 
-    const res = await fetch(`${testServer.url}/`);
+    // Simulate HTTPS via x-forwarded-proto so HSTS header is included.
+    const res = await fetch(`${testServer.url}/`, {
+      headers: { 'x-forwarded-proto': 'https' },
+    });
 
     expect(res.headers.get('Content-Security-Policy')).toBeTruthy();
     expect(res.headers.get('X-XSS-Protection')).toBe('1; mode=block');

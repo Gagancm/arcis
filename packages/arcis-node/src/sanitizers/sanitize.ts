@@ -5,12 +5,12 @@
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { INPUT, DANGEROUS_PROTO_KEYS, NOSQL_DANGEROUS_KEYS } from '../core/constants';
-import { InputTooLargeError } from '../core/errors';
+import { InputTooLargeError, SecurityThreatError } from '../core/errors';
 import type { SanitizeOptions } from '../core/types';
 import { sanitizeXss } from './xss';
-import { sanitizeSql } from './sql';
+import { sanitizeSql, detectSql } from './sql';
 import { sanitizePath } from './path';
-import { sanitizeCommand } from './command';
+import { sanitizeCommand, detectCommandInjection } from './command';
 
 /**
  * Sanitize a string value against multiple attack vectors.
@@ -41,11 +41,18 @@ export function sanitizeString(value: string, options: SanitizeOptions = {}): st
     throw new InputTooLargeError(maxSize, value.length);
   }
 
+  const reject = options.mode !== 'sanitize'; // default: 'reject'
   let result = value;
 
-  // 1. SQL injection prevention (before XSS encoding)
+  // 1. SQL injection
   if (options.sql !== false) {
-    result = sanitizeSql(result);
+    if (reject) {
+      if (detectSql(result)) {
+        throw new SecurityThreatError('sql_injection', 'SQL pattern detected in input');
+      }
+    } else {
+      result = sanitizeSql(result);
+    }
   }
 
   // 2. Path traversal prevention
@@ -53,16 +60,21 @@ export function sanitizeString(value: string, options: SanitizeOptions = {}): st
     result = sanitizePath(result);
   }
 
-  // 3. Command injection prevention (before XSS encoding)
+  // 3. Command injection
   if (options.command !== false) {
-    result = sanitizeCommand(result);
+    if (reject) {
+      if (detectCommandInjection(result)) {
+        throw new SecurityThreatError('command_injection', 'Shell metacharacter detected in input');
+      }
+    } else {
+      result = sanitizeCommand(result);
+    }
   }
 
-  // 4. XSS prevention LAST (HTML encoding is the final transformation)
-  // This ensures SQL/command sanitizers see original patterns,
-  // and the final output is safely HTML-encoded
+  // 4. XSS stripping — always runs to remove dangerous patterns.
+  // HTML encoding is opt-in via options.htmlEncode (for SSR contexts only).
   if (options.xss !== false) {
-    result = sanitizeXss(result);
+    result = sanitizeXss(result, false, options.htmlEncode ?? false);
   }
 
   return result;
@@ -93,7 +105,7 @@ function sanitizeObjectDepth(
   options: SanitizeOptions,
   depth: number
 ): Record<string, unknown> {
-  if (depth > INPUT.MAX_RECURSION_DEPTH) return obj;
+  if (depth >= INPUT.MAX_RECURSION_DEPTH) return obj;
 
   const result: Record<string, unknown> = {};
 
@@ -108,8 +120,9 @@ function sanitizeObjectDepth(
       continue;
     }
 
-    // Sanitize the key itself (XSS only for keys - just encode, don't SQL sanitize keys)
-    const sanitizedKey = sanitizeXss(key);
+    // Sanitize the key against all active threat vectors (not just XSS).
+    // Keys can carry injection payloads that bubble into query builders or ORMs.
+    const sanitizedKey = sanitizeString(key, options);
 
     // Recursively sanitize value
     const value = obj[key];

@@ -62,8 +62,12 @@ export function errorHandler(
     }
 
     // Build response
+    // Only expose err.message when err.expose === true (caller opted in) or in dev mode.
+    // This prevents internal details leaking through arbitrary 4xx errors that happen
+    // to contain sensitive info (e.g. "DB query failed for user admin@corp.com").
+    const exposeMessage = isDev || err.expose === true;
     const response: Record<string, unknown> = {
-      error: statusCode >= 500 ? ERRORS.INTERNAL_SERVER_ERROR : err.message,
+      error: exposeMessage ? err.message : ERRORS.INTERNAL_SERVER_ERROR,
     };
 
     // Only show details in development

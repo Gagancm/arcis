@@ -41,6 +41,18 @@ export interface SanitizeOptions {
   command?: boolean;
   /** Maximum input size in bytes. Default: 1000000 (1MB) */
   maxSize?: number;
+  /**
+   * How to handle detected SQL and command injection threats.
+   * - 'reject': Throw SecurityThreatError (returns 400). Recommended for APIs. Default.
+   * - 'sanitize': Strip/replace threats in-place. Use only when rejection is not feasible.
+   */
+  mode?: 'sanitize' | 'reject';
+  /**
+   * HTML-encode output after XSS stripping.
+   * Enable for SSR/template rendering. Do NOT enable for JSON REST APIs
+   * — it corrupts stored data with HTML entities. Default: false.
+   */
+  htmlEncode?: boolean;
 }
 
 /** Result of sanitizing a string */
@@ -201,8 +213,13 @@ export interface FieldValidator {
   enum?: unknown[];
   /** Whether to sanitize the value. Default: true */
   sanitize?: boolean;
-  /** Custom validation function */
-  custom?: (value: unknown) => boolean | string;
+  /**
+   * Custom validation function.
+   * Return `true` to pass, `false` to fail with a default message,
+   * or a non-empty string to fail with that message.
+   * Returning `undefined` (i.e. forgetting to return) throws at runtime.
+   */
+  custom?: (value: unknown) => true | false | string;
 }
 
 /** Validation result */
@@ -273,6 +290,12 @@ export interface ErrorHandlerOptions {
 export interface HttpError extends Error {
   statusCode?: number;
   status?: number;
+  /**
+   * Whether the error message is safe to expose to API clients.
+   * Set to true for known client-facing errors (4xx with controlled messages).
+   * Defaults to false — message is hidden in production unless explicitly exposed.
+   */
+  expose?: boolean;
 }
 
 // =============================================================================
@@ -286,11 +309,15 @@ export type ArcisMiddleware = (
   next: NextFunction
 ) => void | Promise<void>;
 
+/** Array of middlewares returned by arcis() with an attached cleanup method */
+export type ArcisMiddlewareStack = RequestHandler[] & {
+  /** Clean up resources created by arcis() (rate limiter intervals, etc.) */
+  close: () => void;
+};
+
 /** Arcis function with attached utilities */
 export interface ArcisFunction {
-  (options?: ArcisOptions): RequestHandler[];
-  /** Clean up resources (rate limiter intervals, etc.) */
-  close?: () => void;
+  (options?: ArcisOptions): ArcisMiddlewareStack;
   sanitize: (options?: SanitizeOptions) => RequestHandler;
   rateLimit: (options?: RateLimitOptions) => RateLimiterMiddleware;
   headers: (options?: HeaderOptions) => RequestHandler;
