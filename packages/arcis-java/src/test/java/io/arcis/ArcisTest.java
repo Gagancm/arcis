@@ -1,4 +1,4 @@
-package io.shield;
+package io.arcis;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,25 +10,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.*;
 
 /**
- * Shield Java Conformance Test Suite
- * 
+ * Arcis Java Conformance Test Suite
+ *
  * Tests aligned with TEST_VECTORS.json spec for cross-platform consistency.
- * All Shield implementations must pass these tests.
- * 
+ * All Arcis implementations must pass these tests.
+ *
  * Run with: mvn test
  */
-class ShieldTest {
-    
-    private Shield shield;
-    
+class ArcisTest {
+
+    private Arcis arcis;
+
     @BeforeEach
     void setUp() {
-        shield = Shield.create();
+        arcis = Arcis.create();
     }
     
     @AfterEach
     void tearDown() {
-        shield.close();
+        arcis.close();
     }
     
     // ========================================================================
@@ -43,7 +43,7 @@ class ShieldTest {
         @DisplayName("removes <script> tags")
         void testScriptTag() {
             String input = "<script>alert('xss')</script>";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.contains("<script>"), "must not contain '<script>'");
             assertTrue(result.contains("&lt;"), "must contain encoded '<'");
         }
@@ -52,7 +52,7 @@ class ShieldTest {
         @DisplayName("removes onerror event handlers")
         void testOnErrorHandler() {
             String input = "<img onerror=\"alert(1)\" src=\"x\">";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.contains("onerror"), "must not contain 'onerror'");
         }
         
@@ -60,7 +60,7 @@ class ShieldTest {
         @DisplayName("removes javascript: protocol")
         void testJavascriptProtocol() {
             String input = "javascript:alert(1)";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toLowerCase().contains("javascript:"), 
                 "must not contain 'javascript:' (case insensitive)");
         }
@@ -69,7 +69,7 @@ class ShieldTest {
         @DisplayName("removes <iframe> tags")
         void testIframeTag() {
             String input = "<iframe src=\"evil.com\">";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toLowerCase().contains("<iframe"), "must not contain '<iframe'");
         }
         
@@ -77,7 +77,7 @@ class ShieldTest {
         @DisplayName("encodes < and > as HTML entities")
         void testHtmlEntityEncoding() {
             String input = "Hello <b>World</b>";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertTrue(result.contains("&lt;") && result.contains("&gt;"), 
                 "must encode < and > as &lt; and &gt;");
         }
@@ -86,7 +86,7 @@ class ShieldTest {
         @DisplayName("removes data: protocol")
         void testDataProtocol() {
             String input = "data:text/html,<script>alert(1)</script>";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             // Note: Current impl may not block data: - this test documents expected behavior
             assertFalse(result.contains("<script>"), "must not contain script tags");
         }
@@ -104,7 +104,7 @@ class ShieldTest {
         @DisplayName("removes DROP statement")
         void testDropStatement() {
             String input = "'; DROP TABLE users; --";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toUpperCase().contains("DROP"), 
                 "must not contain 'DROP' (case insensitive)");
         }
@@ -113,7 +113,7 @@ class ShieldTest {
         @DisplayName("removes SELECT statement")
         void testSelectStatement() {
             String input = "SELECT * FROM users";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toUpperCase().contains("SELECT"), 
                 "must not contain 'SELECT' (case insensitive)");
         }
@@ -122,7 +122,7 @@ class ShieldTest {
         @DisplayName("removes DELETE statement")
         void testDeleteStatement() {
             String input = "1; DELETE FROM users";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toUpperCase().contains("DELETE"), 
                 "must not contain 'DELETE' (case insensitive)");
         }
@@ -131,7 +131,7 @@ class ShieldTest {
         @DisplayName("removes SQL comments --")
         void testSqlLineComment() {
             String input = "admin'--";
-            String result = shield.sanitize().sanitizeSql(input);
+            String result = arcis.sanitize().sanitizeSql(input);
             assertFalse(result.contains("--"), "must not contain '--'");
         }
         
@@ -139,7 +139,7 @@ class ShieldTest {
         @DisplayName("removes UNION and block comments")
         void testUnionAndBlockComment() {
             String input = "1 /* comment */ UNION SELECT";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toUpperCase().contains("UNION"), "must not contain 'UNION'");
             assertFalse(result.contains("/*"), "must not contain '/*'");
         }
@@ -157,7 +157,7 @@ class ShieldTest {
         @DisplayName("removes ../ sequences")
         void testUnixPathTraversal() {
             String input = "../../etc/passwd";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.contains("../"), "must not contain '../'");
         }
         
@@ -165,7 +165,7 @@ class ShieldTest {
         @DisplayName("removes ..\\ sequences")
         void testWindowsPathTraversal() {
             String input = "..\\..\\windows\\system32";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.contains("..\\"), "must not contain '..\\'");
         }
         
@@ -173,7 +173,7 @@ class ShieldTest {
         @DisplayName("removes URL-encoded path traversal")
         void testEncodedPathTraversal() {
             String input = "%2e%2e%2f%2e%2e%2f";
-            String result = shield.sanitize().sanitizeString(input);
+            String result = arcis.sanitize().sanitizeString(input);
             assertFalse(result.toLowerCase().contains("%2e%2e"), 
                 "must not contain '%2e%2e' (case insensitive)");
         }
@@ -182,7 +182,7 @@ class ShieldTest {
         @DisplayName("allows safe filenames through unchanged")
         void testSafeFilename() {
             String input = "file.txt";
-            String result = shield.sanitize().sanitizePath(input);
+            String result = arcis.sanitize().sanitizePath(input);
             assertEquals("file.txt", result, "safe input should pass through unchanged");
         }
     }
@@ -202,7 +202,7 @@ class ShieldTest {
             input.put("__proto__", Map.of("admin", true));
             input.put("name", "test");
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             assertFalse(result.containsKey("__proto__"), "result must not have '__proto__' key");
             assertTrue(result.containsKey("name"), "result must have 'name' key");
@@ -215,7 +215,7 @@ class ShieldTest {
             input.put("constructor", Map.of("prototype", Map.of()));
             input.put("email", "test@test.com");
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             assertFalse(result.containsKey("constructor"), "result must not have 'constructor' key");
             assertTrue(result.containsKey("email"), "result must have 'email' key");
@@ -228,7 +228,7 @@ class ShieldTest {
             input.put("prototype", Map.of("isAdmin", true));
             input.put("value", 123);
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             assertFalse(result.containsKey("prototype"), "result must not have 'prototype' key");
             assertTrue(result.containsKey("value"), "result must have 'value' key");
@@ -250,7 +250,7 @@ class ShieldTest {
             input.put("$gt", "");
             input.put("name", "test");
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             assertFalse(result.containsKey("$gt"), "result must not have '$gt' key");
             assertTrue(result.containsKey("name"), "result must have 'name' key");
@@ -263,7 +263,7 @@ class ShieldTest {
             input.put("$where", "function(){ return true; }");
             input.put("id", 1);
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             assertFalse(result.containsKey("$where"), "result must not have '$where' key");
             assertTrue(result.containsKey("id"), "result must have 'id' key");
@@ -277,7 +277,7 @@ class ShieldTest {
             input.put("$or", List.of());
             input.put("valid", true);
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             assertFalse(result.containsKey("$ne"), "result must not have '$ne' key");
             assertFalse(result.containsKey("$or"), "result must not have '$or' key");
@@ -301,7 +301,7 @@ class ShieldTest {
             Map<String, Object> input = new HashMap<>();
             input.put("user", user);
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             @SuppressWarnings("unchecked")
             Map<String, Object> resultUser = (Map<String, Object>) result.get("user");
@@ -315,7 +315,7 @@ class ShieldTest {
             Map<String, Object> input = new HashMap<>();
             input.put("items", List.of("<script>alert(1)</script>", "normal"));
             
-            Map<String, Object> result = shield.sanitize().sanitizeObject(input);
+            Map<String, Object> result = arcis.sanitize().sanitizeObject(input);
             
             @SuppressWarnings("unchecked")
             List<Object> items = (List<Object>) result.get("items");
@@ -336,11 +336,11 @@ class ShieldTest {
         @Test
         @DisplayName("allows requests under limit")
         void testAllowUnderLimit() {
-            Shield.RateLimiter limiter = new Shield.RateLimiter(5, 60000, "Rate limited", 
-                new Shield.RateLimiter.InMemoryStore());
+            Arcis.RateLimiter limiter = new Arcis.RateLimiter(5, 60000, "Rate limited", 
+                new Arcis.RateLimiter.InMemoryStore());
             
             for (int i = 0; i < 3; i++) {
-                Shield.RateLimiter.RateLimitResult result = limiter.check("test-ip");
+                Arcis.RateLimiter.RateLimitResult result = limiter.check("test-ip");
                 assertTrue(result.allowed, "request " + (i+1) + " should be allowed");
                 assertTrue(result.remaining >= 0, "remaining should be non-negative");
             }
@@ -351,8 +351,8 @@ class ShieldTest {
         @Test
         @DisplayName("blocks requests over limit with 429")
         void testBlockOverLimit() {
-            Shield.RateLimiter limiter = new Shield.RateLimiter(3, 60000, "Rate limited",
-                new Shield.RateLimiter.InMemoryStore());
+            Arcis.RateLimiter limiter = new Arcis.RateLimiter(3, 60000, "Rate limited",
+                new Arcis.RateLimiter.InMemoryStore());
             
             // Use up the limit
             for (int i = 0; i < 3; i++) {
@@ -360,7 +360,7 @@ class ShieldTest {
             }
             
             // Next request should be blocked
-            Shield.RateLimiter.RateLimitResult result = limiter.check("test-ip");
+            Arcis.RateLimiter.RateLimitResult result = limiter.check("test-ip");
             assertFalse(result.allowed, "request should be blocked after limit");
             assertEquals(0, result.remaining, "remaining should be 0");
             
@@ -370,13 +370,13 @@ class ShieldTest {
         @Test
         @DisplayName("tracks different IPs separately")
         void testDifferentIpsSeparateLimits() {
-            Shield.RateLimiter limiter = new Shield.RateLimiter(2, 60000, "Rate limited",
-                new Shield.RateLimiter.InMemoryStore());
+            Arcis.RateLimiter limiter = new Arcis.RateLimiter(2, 60000, "Rate limited",
+                new Arcis.RateLimiter.InMemoryStore());
             
             // Each IP gets its own limit
             for (int ip = 1; ip <= 3; ip++) {
                 for (int req = 0; req < 2; req++) {
-                    Shield.RateLimiter.RateLimitResult result = limiter.check("ip-" + ip);
+                    Arcis.RateLimiter.RateLimitResult result = limiter.check("ip-" + ip);
                     assertTrue(result.allowed, "ip-" + ip + " request " + (req+1) + " should be allowed");
                 }
             }
@@ -387,10 +387,10 @@ class ShieldTest {
         @Test
         @DisplayName("returns required headers")
         void testRequiredHeaders() {
-            Shield.RateLimiter limiter = new Shield.RateLimiter(5, 60000, "Rate limited",
-                new Shield.RateLimiter.InMemoryStore());
+            Arcis.RateLimiter limiter = new Arcis.RateLimiter(5, 60000, "Rate limited",
+                new Arcis.RateLimiter.InMemoryStore());
             
-            Shield.RateLimiter.RateLimitResult result = limiter.check("test-ip");
+            Arcis.RateLimiter.RateLimitResult result = limiter.check("test-ip");
             
             // Verify all required values are present
             assertTrue(result.limit > 0, "X-RateLimit-Limit must be set");
@@ -412,35 +412,35 @@ class ShieldTest {
         @Test
         @DisplayName("sets Content-Security-Policy")
         void testCsp() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             assertTrue(headers.containsKey("Content-Security-Policy"), "CSP must be set");
         }
         
         @Test
         @DisplayName("sets X-XSS-Protection to '1; mode=block'")
         void testXssProtection() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             assertEquals("1; mode=block", headers.get("X-XSS-Protection"));
         }
         
         @Test
         @DisplayName("sets X-Content-Type-Options to 'nosniff'")
         void testNoSniff() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             assertEquals("nosniff", headers.get("X-Content-Type-Options"));
         }
         
         @Test
         @DisplayName("sets X-Frame-Options to 'DENY'")
         void testFrameOptions() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             assertEquals("DENY", headers.get("X-Frame-Options"));
         }
         
         @Test
         @DisplayName("sets Strict-Transport-Security with max-age")
         void testHsts() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             String hsts = headers.get("Strict-Transport-Security");
             assertNotNull(hsts, "HSTS must be set");
             assertTrue(hsts.contains("max-age="), "HSTS must contain 'max-age='");
@@ -449,21 +449,21 @@ class ShieldTest {
         @Test
         @DisplayName("sets Referrer-Policy")
         void testReferrerPolicy() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             assertEquals("strict-origin-when-cross-origin", headers.get("Referrer-Policy"));
         }
         
         @Test
         @DisplayName("sets Permissions-Policy")
         void testPermissionsPolicy() {
-            Map<String, String> headers = shield.headers().getHeaders();
+            Map<String, String> headers = arcis.headers().getHeaders();
             assertTrue(headers.containsKey("Permissions-Policy"), "Permissions-Policy must be set");
         }
         
         @Test
         @DisplayName("removes X-Powered-By")
         void testRemovesPoweredBy() {
-            Set<String> toRemove = shield.headers().getHeadersToRemove();
+            Set<String> toRemove = arcis.headers().getHeadersToRemove();
             assertTrue(toRemove.contains("X-Powered-By"), "X-Powered-By should be removed");
         }
     }
@@ -482,10 +482,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             // email is missing
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("email", new Shield.Validator.FieldSchema().type("email").required());
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("email", new Arcis.Validator.FieldSchema().type("email").required());
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail");
             assertTrue(result.errors.stream().anyMatch(e -> e.toLowerCase().contains("required")),
@@ -498,10 +498,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("email", "invalid");
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("email", new Shield.Validator.FieldSchema().type("email").required());
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("email", new Arcis.Validator.FieldSchema().type("email").required());
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail for invalid email");
             assertTrue(result.errors.stream().anyMatch(e -> e.toLowerCase().contains("email")),
@@ -514,10 +514,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("email", "test@example.com");
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("email", new Shield.Validator.FieldSchema().type("email").required());
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("email", new Arcis.Validator.FieldSchema().type("email").required());
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertTrue(result.valid, "validation should pass for valid email");
         }
@@ -528,10 +528,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("name", "ab");  // too short
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("name", new Shield.Validator.FieldSchema().type("string").min(3).max(10));
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("name", new Arcis.Validator.FieldSchema().type("string").min(3).max(10));
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail");
             assertTrue(result.errors.stream().anyMatch(e -> e.contains("at least 3")),
@@ -544,10 +544,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("name", "this is way too long");  // too long
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("name", new Shield.Validator.FieldSchema().type("string").min(3).max(10));
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("name", new Arcis.Validator.FieldSchema().type("string").min(3).max(10));
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail");
             assertTrue(result.errors.stream().anyMatch(e -> e.contains("at most 10")),
@@ -560,10 +560,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("age", -5);  // below min
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("age", new Shield.Validator.FieldSchema().type("number").min(0).max(150));
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("age", new Arcis.Validator.FieldSchema().type("number").min(0).max(150));
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail");
             assertTrue(result.errors.stream().anyMatch(e -> e.contains("at least 0")),
@@ -576,10 +576,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("age", 200);  // above max
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("age", new Shield.Validator.FieldSchema().type("number").min(0).max(150));
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("age", new Arcis.Validator.FieldSchema().type("number").min(0).max(150));
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail");
             assertTrue(result.errors.stream().anyMatch(e -> e.contains("at most 150")),
@@ -592,10 +592,10 @@ class ShieldTest {
             Map<String, Object> data = new HashMap<>();
             data.put("role", "superadmin");  // not in enum
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("role", new Shield.Validator.FieldSchema().type("string").enumValues("user", "admin"));
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("role", new Arcis.Validator.FieldSchema().type("string").enumValues("user", "admin"));
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertFalse(result.valid, "validation should fail");
             assertTrue(result.errors.stream().anyMatch(e -> e.toLowerCase().contains("one of")),
@@ -610,10 +610,10 @@ class ShieldTest {
             data.put("isAdmin", true);  // not in schema
             data.put("role", "admin");  // not in schema
             
-            Map<String, Shield.Validator.FieldSchema> schema = new HashMap<>();
-            schema.put("email", new Shield.Validator.FieldSchema().type("email").required());
+            Map<String, Arcis.Validator.FieldSchema> schema = new HashMap<>();
+            schema.put("email", new Arcis.Validator.FieldSchema().type("email").required());
             
-            Shield.Validator.ValidationResult result = shield.validate().validate(data, schema);
+            Arcis.Validator.ValidationResult result = arcis.validate().validate(data, schema);
             
             assertTrue(result.valid, "validation should pass");
             assertTrue(result.data.containsKey("email"), "output should have 'email'");
@@ -624,18 +624,18 @@ class ShieldTest {
         @Test
         @DisplayName("validates URL format")
         void testUrlValidation() {
-            assertTrue(shield.validate().isUrl("https://example.com"));
-            assertTrue(shield.validate().isUrl("http://example.com/path"));
-            assertFalse(shield.validate().isUrl("not-a-url"));
-            assertFalse(shield.validate().isUrl("ftp://example.com"));
+            assertTrue(arcis.validate().isUrl("https://example.com"));
+            assertTrue(arcis.validate().isUrl("http://example.com/path"));
+            assertFalse(arcis.validate().isUrl("not-a-url"));
+            assertFalse(arcis.validate().isUrl("ftp://example.com"));
         }
         
         @Test
         @DisplayName("validates UUID format")
         void testUuidValidation() {
-            assertTrue(shield.validate().isUuid("550e8400-e29b-41d4-a716-446655440000"));
-            assertFalse(shield.validate().isUuid("not-a-uuid"));
-            assertFalse(shield.validate().isUuid("550e8400-e29b-41d4-a716"));
+            assertTrue(arcis.validate().isUuid("550e8400-e29b-41d4-a716-446655440000"));
+            assertFalse(arcis.validate().isUuid("not-a-uuid"));
+            assertFalse(arcis.validate().isUuid("550e8400-e29b-41d4-a716"));
         }
     }
     
@@ -652,7 +652,7 @@ class ShieldTest {
         void testRedactsPassword() {
             // This test verifies behavior - actual redaction happens internally
             // We can verify by checking the redaction logic directly
-            Shield.SafeLogger logger = new Shield.SafeLogger();
+            Arcis.SafeLogger logger = new Arcis.SafeLogger();
             
             // Should not throw
             assertDoesNotThrow(() -> {
@@ -663,7 +663,7 @@ class ShieldTest {
         @Test
         @DisplayName("redacts token and apiKey")
         void testRedactsTokenAndApiKey() {
-            Shield.SafeLogger logger = new Shield.SafeLogger();
+            Arcis.SafeLogger logger = new Arcis.SafeLogger();
             
             assertDoesNotThrow(() -> {
                 logger.info("Test", Map.of("user", "john", "token", "abc123", "apiKey", "key123"));
@@ -673,7 +673,7 @@ class ShieldTest {
         @Test
         @DisplayName("prevents log injection with newlines")
         void testLogInjectionNewline() {
-            Shield.SafeLogger logger = new Shield.SafeLogger();
+            Arcis.SafeLogger logger = new Arcis.SafeLogger();
             
             // The message should have newlines removed
             assertDoesNotThrow(() -> {
@@ -684,7 +684,7 @@ class ShieldTest {
         @Test
         @DisplayName("prevents log injection with carriage return")
         void testLogInjectionCarriageReturn() {
-            Shield.SafeLogger logger = new Shield.SafeLogger();
+            Arcis.SafeLogger logger = new Arcis.SafeLogger();
             
             assertDoesNotThrow(() -> {
                 logger.info("Normal log\r\nFake entry");
@@ -703,7 +703,7 @@ class ShieldTest {
         @Test
         @DisplayName("production mode hides error details")
         void testProductionMode() {
-            Shield.ErrorHandler handler = new Shield.ErrorHandler(false);
+            Arcis.ErrorHandler handler = new Arcis.ErrorHandler(false);
             Map<String, Object> result = handler.handle(
                 new RuntimeException("Database connection failed"));
             
@@ -718,7 +718,7 @@ class ShieldTest {
         @Test
         @DisplayName("development mode shows error details")
         void testDevelopmentMode() {
-            Shield.ErrorHandler handler = new Shield.ErrorHandler(true);
+            Arcis.ErrorHandler handler = new Arcis.ErrorHandler(true);
             Map<String, Object> result = handler.handle(
                 new RuntimeException("Something broke"));
             

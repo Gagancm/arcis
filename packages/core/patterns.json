@@ -1,6 +1,6 @@
 {
   "version": "1.1.0",
-  "description": "Shield Core Security Patterns - Language Agnostic",
+  "description": "Arcis Core Security Patterns - Language Agnostic",
   "config": {
     "max_input_size": 1000000,
     "max_recursion_depth": 10,

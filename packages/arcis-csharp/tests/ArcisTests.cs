@@ -1,26 +1,26 @@
 using Xunit;
-using Shield;
+using Arcis;
 
-namespace Shield.Tests;
+namespace Arcis.Tests;
 
 /// <summary>
-/// Shield C# Test Suite
-/// 
+/// Arcis C# Test Suite
+///
 /// Tests aligned with TEST_VECTORS.json spec for cross-platform consistency.
 /// Run with: dotnet test
 /// </summary>
-public class ShieldTests : IDisposable
+public class ArcisTests : IDisposable
 {
-    private readonly ShieldInstance _shield;
+    private readonly ArcisInstance _arcis;
 
-    public ShieldTests()
+    public ArcisTests()
     {
-        _shield = ShieldBuilder.Create().Build();
+        _arcis = ArcisBuilder.Create().Build();
     }
 
     public void Dispose()
     {
-        _shield.Dispose();
+        _arcis.Dispose();
     }
 
     // ========================================================================
@@ -31,7 +31,7 @@ public class ShieldTests : IDisposable
     public void SanitizeXss_ScriptTag_RemovesScript()
     {
         var input = "<script>alert('xss')</script>";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("<script", result);
         Assert.DoesNotContain("</script>", result);
@@ -41,7 +41,7 @@ public class ShieldTests : IDisposable
     public void SanitizeXss_JavascriptProtocol_RemovesJavascript()
     {
         var input = "javascript:alert('xss')";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("javascript:", result, StringComparison.OrdinalIgnoreCase);
     }
@@ -50,7 +50,7 @@ public class ShieldTests : IDisposable
     public void SanitizeXss_OnEventHandler_RemovesEvent()
     {
         var input = "<img onerror=\"alert('xss')\" src=x>";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("onerror", result);
     }
@@ -59,7 +59,7 @@ public class ShieldTests : IDisposable
     public void SanitizeXss_HtmlEntities_EncodesEntities()
     {
         var input = "<div>test</div>";
-        var result = _shield.Sanitizer.SanitizeXss(input);
+        var result = _arcis.Sanitizer.SanitizeXss(input);
         
         Assert.True(result.Contains("&lt;") || !result.Contains("<div>"));
     }
@@ -72,7 +72,7 @@ public class ShieldTests : IDisposable
     public void SanitizeSql_SelectStatement_RemovesSelect()
     {
         var input = "SELECT * FROM users";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("SELECT", result, StringComparison.OrdinalIgnoreCase);
     }
@@ -81,7 +81,7 @@ public class ShieldTests : IDisposable
     public void SanitizeSql_UnionStatement_RemovesUnion()
     {
         var input = "1 UNION SELECT password FROM users";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("UNION", result, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SELECT", result, StringComparison.OrdinalIgnoreCase);
@@ -91,7 +91,7 @@ public class ShieldTests : IDisposable
     public void SanitizeSql_Comment_RemovesComment()
     {
         var input = "admin'--";
-        var result = _shield.Sanitizer.SanitizeSql(input);
+        var result = _arcis.Sanitizer.SanitizeSql(input);
         
         Assert.DoesNotContain("--", result);
     }
@@ -104,7 +104,7 @@ public class ShieldTests : IDisposable
     public void SanitizePath_Traversal_RemovesTraversal()
     {
         var input = "../../../etc/passwd";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("../", result);
     }
@@ -113,7 +113,7 @@ public class ShieldTests : IDisposable
     public void SanitizePath_EncodedTraversal_RemovesEncoded()
     {
         var input = "%2e%2e%2f%2e%2e%2fetc/passwd";
-        var result = _shield.Sanitizer.SanitizeString(input);
+        var result = _arcis.Sanitizer.SanitizeString(input);
         
         Assert.DoesNotContain("%2e%2e", result, StringComparison.OrdinalIgnoreCase);
     }
@@ -131,7 +131,7 @@ public class ShieldTests : IDisposable
             ["__proto__"] = new Dictionary<string, object?> { ["admin"] = true }
         };
 
-        var result = _shield.Sanitizer.SanitizeObject(input);
+        var result = _arcis.Sanitizer.SanitizeObject(input);
 
         Assert.True(result.ContainsKey("name"));
         Assert.False(result.ContainsKey("__proto__"));
@@ -146,7 +146,7 @@ public class ShieldTests : IDisposable
             ["$gt"] = 0
         };
 
-        var result = _shield.Sanitizer.SanitizeObject(input);
+        var result = _arcis.Sanitizer.SanitizeObject(input);
 
         Assert.True(result.ContainsKey("name"));
         Assert.False(result.ContainsKey("$gt"));
@@ -163,7 +163,7 @@ public class ShieldTests : IDisposable
             }
         };
 
-        var result = _shield.Sanitizer.SanitizeObject(input);
+        var result = _arcis.Sanitizer.SanitizeObject(input);
 
         var user = result["user"] as Dictionary<string, object?>;
         var bio = user?["bio"] as string;
@@ -226,7 +226,7 @@ public class ShieldTests : IDisposable
     [Fact]
     public void SecurityHeaders_Defaults_HasAllHeaders()
     {
-        var headers = _shield.Headers.GetHeaders();
+        var headers = _arcis.Headers.GetHeaders();
 
         Assert.True(headers.ContainsKey("Content-Security-Policy"));
         Assert.True(headers.ContainsKey("X-XSS-Protection"));
@@ -241,7 +241,7 @@ public class ShieldTests : IDisposable
     [Fact]
     public void SecurityHeaders_ToRemove_IncludesPoweredBy()
     {
-        var toRemove = _shield.Headers.HeadersToRemove;
+        var toRemove = _arcis.Headers.HeadersToRemove;
 
         Assert.Contains("X-Powered-By", toRemove);
     }
@@ -253,26 +253,26 @@ public class ShieldTests : IDisposable
     [Fact]
     public void Validator_Email_Valid()
     {
-        Assert.True(_shield.Validator.IsEmail("test@example.com"));
-        Assert.False(_shield.Validator.IsEmail("not-an-email"));
-        Assert.False(_shield.Validator.IsEmail("@example.com"));
+        Assert.True(_arcis.Validator.IsEmail("test@example.com"));
+        Assert.False(_arcis.Validator.IsEmail("not-an-email"));
+        Assert.False(_arcis.Validator.IsEmail("@example.com"));
     }
 
     [Fact]
     public void Validator_Url_Valid()
     {
-        Assert.True(_shield.Validator.IsUrl("https://example.com"));
-        Assert.True(_shield.Validator.IsUrl("http://example.com/path"));
-        Assert.False(_shield.Validator.IsUrl("not-a-url"));
-        Assert.False(_shield.Validator.IsUrl("ftp://example.com"));
+        Assert.True(_arcis.Validator.IsUrl("https://example.com"));
+        Assert.True(_arcis.Validator.IsUrl("http://example.com/path"));
+        Assert.False(_arcis.Validator.IsUrl("not-a-url"));
+        Assert.False(_arcis.Validator.IsUrl("ftp://example.com"));
     }
 
     [Fact]
     public void Validator_Uuid_Valid()
     {
-        Assert.True(_shield.Validator.IsUuid("550e8400-e29b-41d4-a716-446655440000"));
-        Assert.False(_shield.Validator.IsUuid("not-a-uuid"));
-        Assert.False(_shield.Validator.IsUuid("550e8400-e29b-41d4-a716"));
+        Assert.True(_arcis.Validator.IsUuid("550e8400-e29b-41d4-a716-446655440000"));
+        Assert.False(_arcis.Validator.IsUuid("not-a-uuid"));
+        Assert.False(_arcis.Validator.IsUuid("550e8400-e29b-41d4-a716"));
     }
 
     [Fact]
@@ -289,7 +289,7 @@ public class ShieldTests : IDisposable
             ["email"] = new FieldSchema { Type = "email", Required = true }
         };
 
-        var result = _shield.Validator.Validate(data, schema);
+        var result = _arcis.Validator.Validate(data, schema);
 
         Assert.False(result.Valid);
         Assert.Contains(result.Errors, e => e.Contains("email"));
@@ -304,7 +304,7 @@ public class ShieldTests : IDisposable
     {
         var exception = Record.Exception(() =>
         {
-            _shield.Logger.Info("Test message", new Dictionary<string, object?>
+            _arcis.Logger.Info("Test message", new Dictionary<string, object?>
             {
                 ["username"] = "john",
                 ["password"] = "secret123"

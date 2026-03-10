@@ -60,14 +60,14 @@ process.on('SIGTERM', () => redisStore.close());
 
 ```go
 import (
-    "github.com/aspect.dev/shield-go"
+    "github.com/GagancM/arcis"
     "github.com/redis/go-redis/v9"
 )
 
 rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
-store := NewRedisStore(rdb, "shield:ratelimit:", time.Minute)
+store := NewRedisStore(rdb, "arcis:ratelimit:", time.Minute)
 
-s := shield.NewWithConfig(shield.Config{
+s := arcis.NewWithConfig(arcis.Config{
     RateLimit:    true,
     RateLimitMax: 100,
 })
@@ -80,12 +80,12 @@ defer store.Close()
 ### Python
 
 ```python
-from shield import Shield, RateLimiter
-from redis_store import RedisRateLimitStore
+from arcis import Arcis, RateLimiter
+from arcis.stores.redis import RedisRateLimitStore
 import redis
 
 redis_client = redis.Redis(host='localhost', port=6379)
-store = RedisRateLimitStore(redis_client, key_prefix='shield:ratelimit:')
+store = RedisRateLimitStore(redis_client, key_prefix='arcis:ratelimit:')
 
 limiter = RateLimiter(
     max_requests=100,
@@ -94,13 +94,12 @@ limiter = RateLimiter(
 )
 
 # Or with Flask
-from shield import Shield
-shield = Shield(app, rate_limiter_store=store)
+arcis_instance = Arcis(app, rate_limiter_store=store)
 ```
 
 ## Best Practices
 
-1. **Key Prefix**: Always use a unique prefix (e.g., `shield:ratelimit:`) to avoid collisions with other Redis keys
+1. **Key Prefix**: Always use a unique prefix (e.g., `arcis:ratelimit:`) to avoid collisions with other Redis keys
 2. **TTL**: Set TTL on Redis keys to auto-cleanup expired entries
 3. **Connection Pooling**: Use connection pooling in production
 4. **Graceful Shutdown**: Always close the store/connection on shutdown

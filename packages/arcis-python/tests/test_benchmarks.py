@@ -3,7 +3,7 @@ Arcis Performance Benchmarks
 ==============================
 
 Benchmarks for core Arcis components using pytest-benchmark.
-Mirrors the Go BenchmarkXxx tests in shield-go/shield_test.go.
+Mirrors the Go BenchmarkXxx tests in arcis/arcis_test.go.
 
 Run with:
     pytest tests/test_benchmarks.py -v --benchmark-only

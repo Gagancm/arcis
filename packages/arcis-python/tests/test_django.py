@@ -27,7 +27,7 @@ if not settings.configured:
         ],
         MIDDLEWARE=[],
         ROOT_URLCONF='',
-        SECRET_KEY='test-secret-key-for-shield-tests',
+        SECRET_KEY='test-secret-key-for-arcis-tests',
     )
     django.setup()
 

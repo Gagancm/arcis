@@ -1,22 +1,22 @@
-# Shield Python 🛡️
+# Arcis Python
 
 **One-line security for Python web applications.**
 
-Shield is a cross-platform security library that provides drop-in protection against common web vulnerabilities. Part of the Shield ecosystem with implementations for Node.js, Python, Go, Java, and C#.
+Arcis is a cross-platform security library that provides drop-in protection against common web vulnerabilities. Part of the Arcis ecosystem with implementations for Node.js, Python, Go, Java, and C#.
 
 ## Installation
 
 ```bash
 # Core library (no dependencies)
-pip install shield-security
+pip install arcis
 
 # With framework integrations
-pip install shield-security[flask]
-pip install shield-security[fastapi]
-pip install shield-security[django]
+pip install arcis[flask]
+pip install arcis[fastapi]
+pip install arcis[django]
 
 # All frameworks + dev tools
-pip install shield-security[dev]
+pip install arcis[dev]
 ```
 
 ## Quick Start
@@ -25,10 +25,10 @@ pip install shield-security[dev]
 
 ```python
 from flask import Flask
-from shield import Shield
+from arcis import Arcis
 
 app = Flask(__name__)
-Shield(app)  # That's it! Your app is now protected.
+Arcis(app)  # That's it! Your app is now protected.
 
 @app.route('/')
 def hello():
@@ -39,10 +39,10 @@ def hello():
 
 ```python
 from fastapi import FastAPI
-from shield.fastapi import ShieldMiddleware
+from arcis.fastapi import ArcisMiddleware
 
 app = FastAPI()
-app.add_middleware(ShieldMiddleware)
+app.add_middleware(ArcisMiddleware)
 
 @app.get('/')
 async def hello():
@@ -54,12 +54,12 @@ async def hello():
 ```python
 # settings.py
 MIDDLEWARE = [
-    'shield.django.ShieldMiddleware',
+    'arcis.django.ArcisMiddleware',
     # ... other middleware
 ]
 
 # Optional configuration
-SHIELD_CONFIG = {
+ARCIS_CONFIG = {
     'rate_limit_max': 100,
     'rate_limit_window_ms': 60000,
     'sanitize_xss': True,
@@ -78,7 +78,7 @@ Automatically sanitize user input to prevent:
 - **Prototype Pollution** (`__proto__`, `constructor`)
 
 ```python
-from shield import sanitize_string, sanitize_dict
+from arcis import sanitize_string, sanitize_dict
 
 # Sanitize a string
 clean = sanitize_string("<script>alert('xss')</script>")
@@ -94,7 +94,7 @@ clean = sanitize_dict(data)
 Protect against brute force and DDoS attacks:
 
 ```python
-from shield import RateLimiter
+from arcis import RateLimiter
 
 limiter = RateLimiter(
     max_requests=100,      # 100 requests
@@ -119,7 +119,7 @@ Automatically add security headers to all responses:
 ### ✅ Input Validation
 
 ```python
-from shield import Validator, validate_email, validate_url
+from arcis import Validator, validate_email, validate_url
 
 # Quick validation
 if validate_email(user_input):
@@ -136,7 +136,7 @@ assert Validator.length("hello", min_len=3, max_len=10)  # True
 Log safely without exposing secrets:
 
 ```python
-from shield import SafeLogger
+from arcis import SafeLogger
 
 logger = SafeLogger()
 
@@ -154,7 +154,7 @@ All frameworks support the same configuration options:
 
 ```python
 # Flask
-Shield(
+Arcis(
     app,
     sanitize=True,
     sanitize_xss=True,
@@ -170,13 +170,13 @@ Shield(
 
 # FastAPI
 app.add_middleware(
-    ShieldMiddleware,
+    ArcisMiddleware,
     rate_limit_max=50,
     sanitize_sql=False,
 )
 
 # Django (settings.py)
-SHIELD_CONFIG = {
+ARCIS_CONFIG = {
     'rate_limit_max': 50,
     'sanitize_sql': False,
 }
@@ -188,9 +188,9 @@ Use individual components if you only need specific protection:
 
 ```python
 MIDDLEWARE = [
-    'shield.django.ShieldSanitizeMiddleware',   # Only sanitization
-    'shield.django.ShieldRateLimitMiddleware',  # Only rate limiting
-    'shield.django.ShieldHeadersMiddleware',    # Only security headers
+    'arcis.django.ArcisSanitizeMiddleware',   # Only sanitization
+    'arcis.django.ArcisRateLimitMiddleware',  # Only rate limiting
+    'arcis.django.ArcisHeadersMiddleware',    # Only security headers
 ]
 ```
 
@@ -204,7 +204,7 @@ pip install -e ".[dev]"
 pytest tests/ -v
 
 # With coverage
-pytest tests/ --cov=shield --cov-report=html
+pytest tests/ --cov=arcis --cov-report=html
 ```
 
 ## API Reference
@@ -213,7 +213,7 @@ pytest tests/ --cov=shield --cov-report=html
 
 | Class | Description |
 |-------|-------------|
-| `Shield` | Main class - configures all protections |
+| `Arcis` | Main class - configures all protections |
 | `Sanitizer` | Input sanitization |
 | `RateLimiter` | Rate limiting |
 | `SecurityHeaders` | Security headers |
@@ -247,4 +247,4 @@ MIT License - see LICENSE file for details.
 
 ## Contributing
 
-Contributions welcome! Please read our contributing guidelines and submit pull requests to the main Shield repository.
+Contributions welcome! Please submit pull requests to the main Arcis repository.
