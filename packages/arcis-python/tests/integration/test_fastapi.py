@@ -243,7 +243,7 @@ class TestAsyncInMemoryStore:
         await store.set("test_key", 5, time.time() + 60)
         result = await store.get("test_key")
         assert result is not None
-        assert result["count"] == 5
+        assert result.count == 5
         await store.close()
     
     @pytest.mark.asyncio
@@ -262,7 +262,7 @@ class TestAsyncInMemoryStore:
         new_count = await store.increment("counter")
         assert new_count == 4
         result = await store.get("counter")
-        assert result["count"] == 4
+        assert result.count == 4
         await store.close()
     
     @pytest.mark.asyncio
@@ -281,7 +281,8 @@ class TestAsyncInMemoryStore:
         
         # Force store the expired one (bypass get's auto-cleanup)
         async with store._lock:
-            store._store["expired"] = {"count": 1, "reset_time": time.time() - 10}
+            from arcis.core.types import RateLimitEntry
+            store._store["expired"] = RateLimitEntry(count=1, reset_time=time.time() - 10)
         
         await store.cleanup()
         

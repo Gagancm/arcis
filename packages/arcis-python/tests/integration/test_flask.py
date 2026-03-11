@@ -207,7 +207,7 @@ class TestFlaskSanitization:
         
         result = response.get_json()
         assert '<script>' not in result['received'].get('name', '')
-        assert '&lt;' in result['received'].get('name', '')
+        assert 'alert' not in result['received'].get('name', '')
     
     def test_sanitizes_xss_onerror(self, client):
         data = {"html": '<img onerror="alert(1)" src="x">'}

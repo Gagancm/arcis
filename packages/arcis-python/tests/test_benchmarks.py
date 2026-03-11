@@ -36,9 +36,9 @@ def sanitizer_xss_only():
     return Sanitizer(xss=True, sql=False, nosql=False, path=False, command=False)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def rate_limiter():
-    limiter = RateLimiter(max_requests=10000, window_ms=60000)
+    limiter = RateLimiter(max_requests=1000000, window_ms=60000)
     yield limiter
     limiter.close()
 
@@ -185,15 +185,19 @@ class TestRateLimiterBenchmarks:
 
         benchmark(check_new_ip)
 
-    def test_rate_limiter_check_existing_ip(self, benchmark, rate_limiter):
+    def test_rate_limiter_check_existing_ip(self, benchmark):
         """Benchmark rate limit check for the same IP (hot path)."""
+        # Use a dedicated limiter so no cross-test contamination
+        limiter = RateLimiter(max_requests=10_000_000, window_ms=60000)
+
         class MockRequest:
             remote_addr = "192.168.100.1"
 
         # Pre-warm: ensure entry exists
-        rate_limiter.check(MockRequest())
+        limiter.check(MockRequest())
 
-        benchmark(rate_limiter.check, MockRequest())
+        benchmark(limiter.check, MockRequest())
+        limiter.close()
 
     def test_rate_limiter_store_get(self, benchmark):
         """Benchmark InMemoryStore get operation."""

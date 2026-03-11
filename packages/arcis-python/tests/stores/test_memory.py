@@ -17,7 +17,7 @@ class TestInMemoryStore:
 
         entry = store.get("test_key")
         assert entry is not None
-        assert entry["count"] == 5
+        assert entry.count == 5
 
     def test_increment(self):
         """Should increment count."""

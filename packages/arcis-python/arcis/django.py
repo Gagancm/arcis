@@ -140,7 +140,7 @@ class ArcisMiddleware(MiddlewareMixin):
         # Sanitize request body for POST/PUT/PATCH with JSON
         if self.sanitizer and request.method in ('POST', 'PUT', 'PATCH'):
             content_type = request.content_type or ''
-            if 'application/json' in content_type:
+            if 'application/json' in content_type.lower():
                 try:
                     body = json.loads(request.body.decode('utf-8'))
                     request._arcis_sanitized_body = self.sanitizer(body)
@@ -232,7 +232,7 @@ class ArcisSanitizeMiddleware(MiddlewareMixin):
     def __call__(self, request: HttpRequest) -> HttpResponse:
         if request.method in ('POST', 'PUT', 'PATCH'):
             content_type = request.content_type or ''
-            if 'application/json' in content_type:
+            if 'application/json' in content_type.lower():
                 try:
                     body = json.loads(request.body.decode('utf-8'))
                     request._arcis_sanitized_body = self.sanitizer(body)

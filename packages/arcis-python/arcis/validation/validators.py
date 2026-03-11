@@ -19,8 +19,8 @@ class Validator:
             raise ValidationError(["Invalid email format"])
     """
 
-    EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-    URL_PATTERN = re.compile(r"^https?://[^\s/$.?#].[^\s]*$")
+    EMAIL_PATTERN = re.compile(r"^(?!\.)(?!.*\.\.)(?!.*\.@)[^\s@]+@[^\s@]+\.[^\s@]+$")
+    URL_PATTERN = re.compile(r"^https?://[^\s/$.?#][^\s]*$")
     UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
 
     @classmethod

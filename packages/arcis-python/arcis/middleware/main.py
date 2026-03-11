@@ -8,6 +8,7 @@ from typing import Optional
 
 from ..sanitizers.sanitize import Sanitizer
 from ..stores.memory import InMemoryStore
+from ..core.constants import DEFAULT_MAX_REQUESTS, DEFAULT_WINDOW_MS
 from .rate_limit import RateLimiter, RateLimitExceeded
 from .headers import SecurityHeaders
 from .error_handler import ErrorHandler
@@ -38,8 +39,8 @@ class Arcis:
         sanitize_path: bool = True,
         # Rate limiter options
         rate_limit: bool = True,
-        rate_limit_max: int = 100,
-        rate_limit_window_ms: int = 60000,
+        rate_limit_max: int = DEFAULT_MAX_REQUESTS,
+        rate_limit_window_ms: int = DEFAULT_WINDOW_MS,
         # Security headers options
         headers: bool = True,
         csp: Optional[str] = None,

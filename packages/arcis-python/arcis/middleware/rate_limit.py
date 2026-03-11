@@ -10,6 +10,7 @@ import atexit
 from typing import Any, Callable, Dict, Optional
 
 from ..stores.memory import InMemoryStore
+from ..core.constants import DEFAULT_MAX_REQUESTS, DEFAULT_WINDOW_MS, DEFAULT_RATE_LIMIT_MESSAGE
 
 
 class RateLimitExceeded(Exception):
@@ -34,25 +35,33 @@ class RateLimiter:
 
     def __init__(
         self,
-        max_requests: int = 100,
-        window_ms: int = 60000,
-        message: str = "Too many requests, please try again later.",
+        max_requests: int = DEFAULT_MAX_REQUESTS,
+        window_ms: int = DEFAULT_WINDOW_MS,
+        message: str = DEFAULT_RATE_LIMIT_MESSAGE,
         key_func: Optional[Callable] = None,
         skip_func: Optional[Callable] = None,
         store: Optional[InMemoryStore] = None,
     ):
+        if max_requests < 1:
+            raise ValueError(f"max_requests must be >= 1, got {max_requests}")
+        if window_ms < 1:
+            raise ValueError(f"window_ms must be >= 1, got {window_ms}")
+
         self.max_requests = max_requests
         self.window_seconds = window_ms / 1000
         self.message = message
         self.key_func = key_func or self._default_key_func
         self.skip_func = skip_func
+        self._store_provided = store is not None
         self.store = store or InMemoryStore()
         self._closed = False
 
-        # Start cleanup thread
+        # Start cleanup thread only for in-memory store
+        # External stores (e.g. Redis) handle their own expiry
         self._cleanup_thread: Optional[threading.Thread] = None
         self._cleanup_event = threading.Event()
-        self._start_cleanup_thread()
+        if not self._store_provided:
+            self._start_cleanup_thread()
 
         # Register cleanup on exit
         atexit.register(self.close)
@@ -79,14 +88,36 @@ class RateLimiter:
         self.store.close()
 
     def _default_key_func(self, request) -> str:
-        """Default key function - uses IP address."""
-        # Works with Flask, FastAPI, Django
+        """Default key function - uses client IP address.
+
+        Checks X-Forwarded-For and X-Real-IP headers first so deployments
+        behind reverse proxies (nginx, ALB, Cloudflare) get per-client buckets
+        instead of sharing a single bucket for the proxy IP.
+        """
+        # Django — headers live in META with HTTP_ prefix
+        if hasattr(request, 'META'):
+            forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+            if forwarded:
+                return forwarded.split(',')[0].strip()
+            real_ip = request.META.get('HTTP_X_REAL_IP')
+            if real_ip:
+                return real_ip
+            return request.META.get('REMOTE_ADDR', 'unknown')
+
+        # Flask — headers via request.headers mapping
         if hasattr(request, 'remote_addr'):
+            forwarded = request.headers.get('X-Forwarded-For') if hasattr(request, 'headers') else None
+            if forwarded:
+                return forwarded.split(',')[0].strip()
+            real_ip = request.headers.get('X-Real-IP') if hasattr(request, 'headers') else None
+            if real_ip:
+                return real_ip
             return request.remote_addr or "unknown"
+
+        # FastAPI/Starlette sync fallback
         if hasattr(request, 'client'):
             return request.client.host if request.client else "unknown"
-        if hasattr(request, 'META'):
-            return request.META.get('REMOTE_ADDR', 'unknown')
+
         return "unknown"
 
     def check(self, request) -> Dict[str, Any]:
@@ -96,10 +127,10 @@ class RateLimiter:
         """
         if self._closed:
             # Fail open if closed
-            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests}
+            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests, "reset": 0}
 
         if self.skip_func and self.skip_func(request):
-            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests}
+            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests, "reset": 0}
 
         key = self.key_func(request)
         now = time.time()

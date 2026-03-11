@@ -75,3 +75,4 @@ desktop.ini
 *.key
 *.p12
 secrets.json
+*.claude
