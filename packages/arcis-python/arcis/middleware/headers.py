@@ -6,7 +6,7 @@ SecurityHeaders class for adding HTTP security headers to responses.
 
 from typing import Dict, Optional, Union
 
-from ..core.constants import PATTERNS
+from ..core.constants import PATTERNS, HSTS_DEFAULT_MAX_AGE
 
 
 class SecurityHeaders:
@@ -27,7 +27,7 @@ class SecurityHeaders:
         x_content_type_options: str = "nosniff",
         xss_filter: bool = True,
         hsts: bool = True,
-        hsts_max_age: int = 31536000,
+        hsts_max_age: int = HSTS_DEFAULT_MAX_AGE,
         hsts_include_subdomains: bool = True,
         referrer_policy: str = "strict-origin-when-cross-origin",
         permissions_policy: str = "geolocation=(), microphone=(), camera=()",

@@ -33,15 +33,14 @@ class InMemoryStore:
             self._store[key] = RateLimitEntry(count=count, reset_time=reset_time)
 
     def increment(self, key: str) -> int:
-        """Increment the request count for a key. Creates entry if missing."""
+        """Increment the request count for a key. Returns 1 if key not found (race condition
+        edge case — caller's set() was cleaned up between get() and increment()). The next
+        request will re-create the entry via set()."""
         with self._lock:
             entry = self._store.get(key)
             if entry:
                 entry.count += 1
                 return entry.count
-            # Entry doesn't exist - create it (defensive: should not happen in normal flow)
-            # Use a default reset_time of 60s from now; caller should use set() for new entries
-            self._store[key] = RateLimitEntry(count=1, reset_time=time.time() + 60)
             return 1
 
     def cleanup(self):

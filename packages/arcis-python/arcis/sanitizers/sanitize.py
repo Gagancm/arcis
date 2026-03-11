@@ -60,7 +60,9 @@ class Sanitizer:
             self._nosql_keys = set(PATTERNS["patterns"]["nosql_injection"].get("dangerous_keys", []))
 
         # Prototype pollution dangerous keys
-        self._proto_keys: Set[str] = {"__proto__", "constructor", "prototype"}
+        self._proto_keys: Set[str] = set(
+            PATTERNS.get("patterns", {}).get("prototype_pollution", {}).get("dangerous_keys", [])
+        ) or {"__proto__", "constructor", "prototype"}
 
         # Path traversal patterns
         self._path_patterns = []
@@ -69,13 +71,12 @@ class Sanitizer:
                 flags = re.IGNORECASE if "i" in rule.get("flags", "") else 0
                 self._path_patterns.append(re.compile(rule["pattern"], flags))
 
-        # Command injection patterns
+        # Command injection patterns (loaded from PATTERNS, like other categories)
         self._command_patterns = []
-        if command:
-            self._command_patterns = [
-                re.compile(r'[;&|`$()]'),
-                re.compile(r'\b(cat|ls|rm|mv|cp|wget|curl|nc|bash|sh|python|perl|ruby|php)\b', re.IGNORECASE),
-            ]
+        if command and "command_injection" in PATTERNS.get("patterns", {}):
+            for rule in PATTERNS["patterns"]["command_injection"].get("rules", []):
+                flags = re.IGNORECASE if "i" in rule.get("flags", "") else 0
+                self._command_patterns.append(re.compile(rule["pattern"], flags))
 
         # XSS encoding map
         self._xss_encoding = PATTERNS.get("patterns", {}).get("xss", {}).get("encoding", {
@@ -85,7 +86,7 @@ class Sanitizer:
     def sanitize_string(self, value: str) -> str:
         """Sanitize a string value."""
         if not isinstance(value, str):
-            return value
+            raise TypeError(f"sanitize_string expects str, got {type(value).__name__}")
 
         # Input size limit to prevent DoS
         if len(value) > self.max_input_size:
@@ -99,14 +100,17 @@ class Sanitizer:
             for pattern in self._xss_patterns:
                 result = pattern.sub("", result)
 
-            # THEN encode remaining content
+            # THEN encode remaining content (& first to avoid double-encoding)
+            if '&' in self._xss_encoding:
+                result = result.replace('&', self._xss_encoding['&'])
             for char, replacement in self._xss_encoding.items():
-                result = result.replace(char, replacement)
+                if char != '&':
+                    result = result.replace(char, replacement)
 
         # SQL injection prevention
         if self.sql:
             for pattern in self._sql_patterns:
-                result = pattern.sub("[BLOCKED]", result)
+                result = pattern.sub(" ", result)
 
         # Path traversal prevention
         if self.path:
@@ -116,7 +120,7 @@ class Sanitizer:
         # Command injection prevention
         if self.command:
             for pattern in self._command_patterns:
-                result = pattern.sub("[BLOCKED]", result)
+                result = pattern.sub(" ", result)
 
         return result
 
@@ -135,11 +139,11 @@ class Sanitizer:
         result = {}
         for key, value in data.items():
             # Prototype pollution prevention - always block dangerous keys
-            if key in self._proto_keys:
+            if key.lower() in self._proto_keys:
                 continue
 
             # NoSQL injection prevention - skip dangerous keys
-            if self.nosql and key in self._nosql_keys:
+            if self.nosql and key.lower() in self._nosql_keys:
                 continue
 
             # Sanitize the key

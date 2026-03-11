@@ -7,6 +7,7 @@ Includes both sync and async rate limiters for FastAPI applications.
 import time
 import json
 import asyncio
+import logging
 from typing import Callable, Optional, Dict, Any, Protocol
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -17,6 +18,9 @@ from .middleware.rate_limit import RateLimiter, RateLimitExceeded
 from .middleware.headers import SecurityHeaders
 from .middleware.error_handler import ErrorHandler
 from .core.types import RateLimitEntry
+from .core.constants import DEFAULT_MAX_REQUESTS, DEFAULT_WINDOW_MS, DEFAULT_RATE_LIMIT_MESSAGE
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -80,15 +84,14 @@ class AsyncInMemoryStore:
             self._store[key] = RateLimitEntry(count=count, reset_time=reset_time)
     
     async def increment(self, key: str) -> int:
-        """Increment count for a key. Creates entry if missing."""
+        """Increment count for a key. Returns 1 if key not found (race condition
+        edge case — caller's set() was cleaned up between get() and increment()). The next
+        request will re-create the entry via set()."""
         async with self._lock:
             entry = self._store.get(key)
             if entry:
                 entry.count += 1
                 return entry.count
-            # Entry doesn't exist - create it (defensive: should not happen in normal flow)
-            # Use a default reset_time of 60s from now; caller should use set() for new entries
-            self._store[key] = RateLimitEntry(count=1, reset_time=time.time() + 60)
             return 1
     
     async def cleanup(self) -> None:
@@ -153,13 +156,18 @@ class AsyncRateLimiter:
     
     def __init__(
         self,
-        max_requests: int = 100,
-        window_ms: int = 60000,
-        message: str = "Too many requests, please try again later.",
+        max_requests: int = DEFAULT_MAX_REQUESTS,
+        window_ms: int = DEFAULT_WINDOW_MS,
+        message: str = DEFAULT_RATE_LIMIT_MESSAGE,
         key_func: Optional[Callable] = None,
         skip_func: Optional[Callable] = None,
         store: Optional[AsyncRateLimitStore] = None,
     ):
+        if max_requests < 1:
+            raise ValueError(f"max_requests must be >= 1, got {max_requests}")
+        if window_ms < 1:
+            raise ValueError(f"window_ms must be >= 1, got {window_ms}")
+
         self.max_requests = max_requests
         self.window_seconds = window_ms / 1000
         self.window_ms = window_ms
@@ -206,7 +214,7 @@ class AsyncRateLimiter:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    print(f"[Arcis Async Rate Limiter] Cleanup error: {e}")
+                    logger.error("Async rate limiter cleanup error: %s", e)
         
         self._cleanup_task = asyncio.create_task(cleanup_loop())
     
@@ -226,7 +234,7 @@ class AsyncRateLimiter:
             AsyncRateLimitExceeded: If rate limit is exceeded
         """
         if self._closed:
-            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests}
+            return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests, "reset": 0}
         
         # Start cleanup task if not already running
         if self._cleanup_task is None and not self._store_provided:
@@ -238,7 +246,7 @@ class AsyncRateLimiter:
             if asyncio.iscoroutine(should_skip):
                 should_skip = await should_skip
             if should_skip:
-                return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests}
+                return {"allowed": True, "limit": self.max_requests, "remaining": self.max_requests, "reset": 0}
         
         key = self.key_func(request)
         now = time.time()
@@ -322,6 +330,20 @@ class ArcisMiddleware(BaseHTTPMiddleware):
             ArcisMiddleware,
             async_rate_limiter=AsyncRateLimiter(store=async_store),
         )
+
+    Important: Request Body Access
+        The middleware calls ``await request.json()`` to sanitize JSON bodies.
+        Starlette only allows the body stream to be read once, so calling
+        ``request.json()`` or ``request.body()`` again inside a route handler
+        will return empty data.
+
+        Use ``request.state.sanitized_body`` (or the alias ``request.state.json``)
+        to access the parsed and sanitized body instead::
+
+            @app.post("/submit")
+            async def submit(request: Request):
+                body = request.state.sanitized_body  # already sanitized
+                ...
     """
     
     def __init__(
@@ -335,8 +357,8 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         sanitize_path: bool = True,
         # Rate limiter options
         rate_limit: bool = True,
-        rate_limit_max: int = 100,
-        rate_limit_window_ms: int = 60000,
+        rate_limit_max: int = DEFAULT_MAX_REQUESTS,
+        rate_limit_window_ms: int = DEFAULT_WINDOW_MS,
         use_async_rate_limiter: bool = True,  # NEW: default to async
         # Security headers options
         headers: bool = True,
@@ -516,8 +538,8 @@ async def get_rate_limit_info(request: Request) -> Optional[Dict[str, Any]]:
 # ============================================================================
 
 def create_rate_limit_dependency(
-    max_requests: int = 100,
-    window_ms: int = 60000,
+    max_requests: int = DEFAULT_MAX_REQUESTS,
+    window_ms: int = DEFAULT_WINDOW_MS,
     key_func: Optional[Callable] = None,
     skip_func: Optional[Callable] = None,
     store: Optional[AsyncRateLimitStore] = None,

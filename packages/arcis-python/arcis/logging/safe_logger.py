@@ -9,7 +9,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Set
 
-from ..core.constants import PATTERNS, MAX_RECURSION_DEPTH
+from ..core.constants import PATTERNS, MAX_RECURSION_DEPTH, DEFAULT_LOG_MAX_LENGTH
 
 
 class SafeLogger:
@@ -28,7 +28,7 @@ class SafeLogger:
         self,
         name: str = "arcis",
         redact_keys: Optional[List[str]] = None,
-        max_length: int = 10000,
+        max_length: int = DEFAULT_LOG_MAX_LENGTH,
     ):
         self.logger = logging.getLogger(name)
         self.max_length = max_length
@@ -46,7 +46,7 @@ class SafeLogger:
         if isinstance(data, str):
             # Remove control characters (log injection prevention)
             safe = re.sub(r'[\r\n\t]', ' ', data)
-            safe = re.sub(r'[^\x20-\x7E\u00A0-\u024F]', '', safe)
+            safe = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', safe)
             if len(safe) > self.max_length:
                 safe = safe[:self.max_length] + "...[TRUNCATED]"
             return safe
@@ -69,7 +69,7 @@ class SafeLogger:
         """Internal log method."""
         import datetime
         entry = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": level,
             "message": self._redact(message),
         }

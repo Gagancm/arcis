@@ -34,9 +34,14 @@ Requires:
     # or: pip install redis
 """
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
+
+from ..core.types import RateLimitEntry
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -123,8 +128,8 @@ class RedisRateLimitStore:
     def _key(self, key: str) -> str:
         return f"{self._key_prefix}{key}"
 
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get rate limit entry. Returns dict with count and reset_time (in seconds)."""
+    def get(self, key: str) -> Optional[RateLimitEntry]:
+        """Get rate limit entry. Returns RateLimitEntry with reset_time in seconds."""
         if self._closed:
             return None
         try:
@@ -132,21 +137,23 @@ class RedisRateLimitStore:
             if not data:
                 return None
 
-            count = data.get(b"count") or data.get("count")
-            reset_time = data.get(b"reset_time") or data.get("reset_time")
-            if not count or not reset_time:
+            # Decode bytes keys/values — Redis returns bytes by default
+            decoded = {(k.decode() if isinstance(k, bytes) else k): v for k, v in data.items()}
+            count_raw = decoded.get("count")
+            reset_time_raw = decoded.get("reset_time")
+            if count_raw is None or reset_time_raw is None:
                 return None
 
             # reset_time is stored in milliseconds, convert to seconds for comparison
-            reset_time_ms = float(reset_time)
+            reset_time_ms = float(reset_time_raw)
             now_ms = time.time() * 1000
             if reset_time_ms < now_ms:
                 return None
 
-            # Return reset_time in seconds to match RateLimiter interface
-            return {"count": int(count), "reset_time": reset_time_ms / 1000}
+            # Return RateLimitEntry with reset_time in seconds to match RateLimiter interface
+            return RateLimitEntry(count=int(count_raw), reset_time=reset_time_ms / 1000)
         except Exception as e:
-            print(f"[Arcis RedisStore] get error: {e}")
+            logger.error("RedisRateLimitStore.get error: %s", e)
             return None
 
     def set(self, key: str, count: int, reset_time: float) -> None:
@@ -165,7 +172,7 @@ class RedisRateLimitStore:
             pipe.pexpire(full_key, ttl_ms)
             pipe.execute()
         except Exception as e:
-            print(f"[Arcis RedisStore] set error: {e}")
+            logger.error("RedisRateLimitStore.set error: %s", e)
 
     def increment(self, key: str) -> int:
         if self._closed:
@@ -180,7 +187,7 @@ class RedisRateLimitStore:
                 return int(result[0])
             return self._redis.hincrby(self._key(key), "count", 1)
         except Exception as e:
-            print(f"[Arcis RedisStore] increment error: {e}")
+            logger.error("RedisRateLimitStore.increment error: %s", e)
             return 1  # fail open
 
     def cleanup(self) -> None:
@@ -236,8 +243,8 @@ class AsyncRedisRateLimitStore:
     def _key(self, key: str) -> str:
         return f"{self._key_prefix}{key}"
 
-    async def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get rate limit entry. Returns dict with count and reset_time (in seconds)."""
+    async def get(self, key: str) -> Optional[RateLimitEntry]:
+        """Get rate limit entry. Returns RateLimitEntry with reset_time in seconds."""
         if self._closed:
             return None
         try:
@@ -245,21 +252,23 @@ class AsyncRedisRateLimitStore:
             if not data:
                 return None
 
-            count = data.get(b"count") or data.get("count")
-            reset_time = data.get(b"reset_time") or data.get("reset_time")
-            if not count or not reset_time:
+            # Decode bytes keys/values — Redis returns bytes by default
+            decoded = {(k.decode() if isinstance(k, bytes) else k): v for k, v in data.items()}
+            count_raw = decoded.get("count")
+            reset_time_raw = decoded.get("reset_time")
+            if count_raw is None or reset_time_raw is None:
                 return None
 
             # reset_time is stored in milliseconds, convert to seconds for comparison
-            reset_time_ms = float(reset_time)
+            reset_time_ms = float(reset_time_raw)
             now_ms = time.time() * 1000
             if reset_time_ms < now_ms:
                 return None
 
-            # Return reset_time in seconds to match RateLimiter interface
-            return {"count": int(count), "reset_time": reset_time_ms / 1000}
+            # Return RateLimitEntry with reset_time in seconds to match RateLimiter interface
+            return RateLimitEntry(count=int(count_raw), reset_time=reset_time_ms / 1000)
         except Exception as e:
-            print(f"[Arcis AsyncRedisStore] get error: {e}")
+            logger.error("AsyncRedisRateLimitStore.get error: %s", e)
             return None
 
     async def set(self, key: str, count: int, reset_time: float) -> None:
@@ -278,7 +287,7 @@ class AsyncRedisRateLimitStore:
             pipe.pexpire(full_key, ttl_ms)
             await pipe.execute()
         except Exception as e:
-            print(f"[Arcis AsyncRedisStore] set error: {e}")
+            logger.error("AsyncRedisRateLimitStore.set error: %s", e)
 
     async def increment(self, key: str) -> int:
         if self._closed:
@@ -293,7 +302,7 @@ class AsyncRedisRateLimitStore:
                 return int(result[0])
             return await self._redis.hincrby(self._key(key), "count", 1)
         except Exception as e:
-            print(f"[Arcis AsyncRedisStore] increment error: {e}")
+            logger.error("AsyncRedisRateLimitStore.increment error: %s", e)
             return 1  # fail open
 
     async def cleanup(self) -> None:

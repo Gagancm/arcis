@@ -133,7 +133,7 @@ Phase 3 — SIGN-OFF
 | Order | Language | State File | Status |
 |-------|----------|-----------|--------|
 | 1 | Node.js | `audit/node.md` | ✅ Complete — 423/423 signed off |
-| 2 | Python | `audit/python.md` | 🔴 In progress — P0 + P1 open |
+| 2 | Python | `audit/python.md` | ✅ Complete — 240/240 signed off |
 | 3 | Go | `audit/go.md` | 🟠 Not started — known P1 issues |
 | 4 | C# | `audit/csharp.md` | ⬜ Not started |
 | 5 | Java | `audit/java.md` | ⬜ Not started |
