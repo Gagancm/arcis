@@ -1,8 +1,8 @@
 # Arcis
 
-Cross-platform security middleware for Node.js, Python, and Go.
+Cross-platform security library for Node.js, Python, and Go.
 
-One line of code. XSS, SQL injection, NoSQL injection, path traversal, command injection, rate limiting, security headers, schema validation, and safe logging — handled.
+XSS, SQL injection, NoSQL injection, path traversal, command injection, rate limiting, security headers, schema validation, and safe logging — handled.
 
 ## Install
 
@@ -27,21 +27,101 @@ go get github.com/Gagancm/arcis
 
 ## Quick Start
 
+### Node.js
+
+Arcis has two layers: **framework-agnostic core functions** that work anywhere, and **middleware adapters** for specific frameworks.
+
+#### With Express (built-in adapter)
+
 ```js
-// Express
+import { arcis } from '@arcis/node';
+
 app.use(arcis());
+// That's it. Sanitization, rate limiting, and security headers are on.
 ```
+
+#### With any framework (Fastify, Koa, Hono, etc.)
+
+The core sanitization, validation, and logging functions have zero framework dependencies. Use them directly in any Node.js project:
+
+```js
+import {
+  sanitizeString,
+  sanitizeObject,
+  detectXss,
+  detectSql,
+  detectCommandInjection,
+  detectPathTraversal,
+  createSafeLogger,
+  createRedactor,
+} from '@arcis/node';
+
+// Sanitize user input — works anywhere
+const clean = sanitizeString(userInput);
+const cleanBody = sanitizeObject(requestBody);
+
+// Detect threats without sanitizing
+if (detectXss(value)) { /* reject */ }
+if (detectSql(value)) { /* reject */ }
+
+// Safe logging — no framework needed
+const logger = createSafeLogger();
+logger.info('User login', { email, password: 'will-be-redacted' });
+```
+
+**Writing your own middleware is straightforward.** Here's a Fastify example:
+
+```js
+import { sanitizeObject } from '@arcis/node';
+
+fastify.addHook('preHandler', async (request, reply) => {
+  if (request.body) request.body = sanitizeObject(request.body);
+  if (request.query) request.query = sanitizeObject(request.query);
+});
+```
+
+Koa:
+
+```js
+import { sanitizeObject } from '@arcis/node';
+
+app.use(async (ctx, next) => {
+  if (ctx.request.body) ctx.request.body = sanitizeObject(ctx.request.body);
+  if (ctx.query) ctx.query = sanitizeObject(ctx.query);
+  await next();
+});
+```
+
+Hono:
+
+```js
+import { sanitizeObject } from '@arcis/node';
+
+app.use('*', async (c, next) => {
+  const body = await c.req.json().catch(() => null);
+  if (body) c.set('sanitizedBody', sanitizeObject(body));
+  await next();
+});
+```
+
+> Built-in adapters for Fastify, Koa, and Hono are on the roadmap. The core functions work today.
+
+### Python
 
 ```python
 # Flask
+from arcis import Arcis
 Arcis(app)
 
 # FastAPI
+from arcis import ArcisMiddleware
 app.add_middleware(ArcisMiddleware)
 
 # Django — add to MIDDLEWARE in settings.py
 'arcis.django.ArcisMiddleware'
 ```
+
+### Go
 
 ```go
 // Gin
@@ -50,8 +130,6 @@ r.Use(arcisgin.Middleware())
 // Echo
 e.Use(arcisecho.Middleware())
 ```
-
-That's it. Sanitization, rate limiting, and security headers are on.
 
 ## What It Does
 
@@ -62,15 +140,44 @@ That's it. Sanitization, rate limiting, and security headers are on.
 - **Safe logging** — sensitive key redaction, log injection prevention
 - **Error handling** — production-safe error responses (no stack traces leaked)
 
+## Architecture
+
+Arcis separates **core security logic** from **framework adapters**:
+
+```
+@arcis/node
+├── Core (framework-agnostic)
+│   ├── sanitizeString / sanitizeObject   — clean any input
+│   ├── detectXss / detectSql / ...       — threat detection
+│   ├── createSafeLogger / createRedactor — safe logging
+│   ├── MemoryStore / RedisStore          — rate limit backends
+│   └── Error classes and constants
+│
+└── Adapters (framework-specific)
+    └── Express middleware (arcis(), arcis.sanitize(), arcis.rateLimit(), ...)
+```
+
+The core functions are pure — no `req`, `res`, or `next`. They take values in and return values out. This means they work with Express, Fastify, Koa, Hono, Nest, raw `http.createServer`, Bun, Deno, serverless functions, or anything else.
+
+Subpath imports are available for tree-shaking:
+
+```js
+import { sanitizeString } from '@arcis/node/sanitizers';
+import { createSafeLogger } from '@arcis/node/logging';
+import { MemoryStore } from '@arcis/node/stores';
+```
+
 ## Supported Frameworks
 
-| SDK | Frameworks | Status |
-|-----|------------|--------|
-| Node.js | Express | Stable |
-| Python | Flask, FastAPI, Django | Stable |
-| Go | net/http, Gin, Echo | Stable |
-| Java | Spring Boot | Planned |
-| C# | ASP.NET Core | Planned |
+| SDK | Built-in Adapters | Core Functions | Status |
+|-----|-------------------|----------------|--------|
+| Node.js | Express | Work with any framework | Stable |
+| Python | Flask, FastAPI, Django | Work standalone | Stable |
+| Go | net/http, Gin, Echo | Work standalone | Stable |
+| Java | Spring Boot | — | Planned |
+| C# | ASP.NET Core | — | Planned |
+
+**Node.js roadmap:** Built-in adapters for Fastify, Koa, and Hono are planned. The core functions already work with these frameworks — you just wire a short middleware wrapper (see examples above).
 
 ## How It Works
 
