@@ -12,6 +12,19 @@ pip install arcis                # Python
 go get github.com/GagancM/arcis  # Go
 ```
 
+**Install directly from GitHub:**
+
+```bash
+# Node.js
+npm install github:Gagancm/arcis#main --install-strategy=nested
+
+# Python
+pip install git+https://github.com/Gagancm/arcis.git#subdirectory=packages/arcis-python
+
+# Go
+go get github.com/Gagancm/arcis
+```
+
 ## Quick Start
 
 ```js
@@ -65,7 +78,7 @@ All SDKs load security patterns from a shared `patterns.json` at runtime. A shar
 
 ## Documentation
 
-Detailed configuration, API reference, Redis setup, granular middleware usage, and architecture docs are in the [`docs/`](docs/) directory.
+Detailed configuration, API reference, Redis setup, granular middleware usage, and architecture docs are in the [Wiki](https://github.com/Gagancm/arcis/wiki).
 
 ## Contributing
 
