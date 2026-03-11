@@ -9,7 +9,7 @@ description = "One-line security for Python web applications"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your@email.com"}
+    {name = "Gagan CM", email = "gagancm@users.noreply.github.com"}
 ]
 keywords = ["security", "xss", "sql-injection", "rate-limiting", "flask", "fastapi", "django"]
 classifiers = [
