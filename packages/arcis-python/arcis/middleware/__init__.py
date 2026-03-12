@@ -6,6 +6,7 @@ from .main import Arcis
 from .rate_limit import RateLimiter, RateLimitExceeded
 from .headers import SecurityHeaders
 from .error_handler import ErrorHandler, create_error_handler
+from .cors import SafeCors, create_cors
 
 __all__ = [
     "Arcis",
@@ -14,4 +15,6 @@ __all__ = [
     "SecurityHeaders",
     "ErrorHandler",
     "create_error_handler",
+    "SafeCors",
+    "create_cors",
 ]
