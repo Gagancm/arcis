@@ -36,6 +36,8 @@ export { default } from './middleware/main';
 export { createRateLimiter, rateLimit } from './middleware/rate-limit';
 export { createHeaders, securityHeaders } from './middleware/headers';
 export { errorHandler, createErrorHandler } from './middleware/error-handler';
+export { safeCors, createCors } from './middleware/cors';
+export { secureCookieDefaults, createSecureCookies, enforceSecureCookie } from './middleware/cookies';
 
 // =============================================================================
 // SANITIZERS
@@ -110,6 +112,8 @@ export type {
 
 // URL validation types
 export type { ValidateUrlOptions, ValidateUrlResult } from './validation/url';
+export type { CorsOptions } from './middleware/cors';
+export type { SecureCookieOptions } from './middleware/cookies';
 export type { ValidateRedirectOptions, ValidateRedirectResult } from './validation/redirect';
 
 // Redis store types

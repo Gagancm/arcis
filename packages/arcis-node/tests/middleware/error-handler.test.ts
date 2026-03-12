@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
-import { errorHandler, createErrorHandler } from '../../src/middleware/error-handler';
+import { errorHandler, createErrorHandler, containsSensitiveInfo } from '../../src/middleware/error-handler';
 import { mockRequest, mockResponse, createTestServer, TestServer } from '../setup';
 
 describe('errorHandler', () => {
@@ -156,6 +156,127 @@ describe('createErrorHandler', () => {
 
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
+  });
+});
+
+describe('containsSensitiveInfo', () => {
+  it('should detect SQL database errors', () => {
+    expect(containsSensitiveInfo('SQLSTATE[42S02]: Base table or view not found')).toBe(true);
+    expect(containsSensitiveInfo('ORA-00942: table or view does not exist')).toBe(true);
+    expect(containsSensitiveInfo('SQLITE_ERROR: no such table: users')).toBe(true);
+    expect(containsSensitiveInfo('syntax error at or near "SELECT"')).toBe(true);
+    expect(containsSensitiveInfo('relation "users" does not exist')).toBe(true);
+    expect(containsSensitiveInfo('column "email" does not exist')).toBe(true);
+    expect(containsSensitiveInfo('duplicate key value violates unique constraint "users_pkey"')).toBe(true);
+    expect(containsSensitiveInfo("table users doesn't exist")).toBe(true);
+    expect(containsSensitiveInfo('unknown column "password" in field list')).toBe(true);
+  });
+
+  it('should detect MongoDB errors', () => {
+    expect(containsSensitiveInfo('MongoError: E11000 duplicate key')).toBe(true);
+    expect(containsSensitiveInfo('MongoServerError: bad auth')).toBe(true);
+    expect(containsSensitiveInfo('MongoNetworkError: connection refused')).toBe(true);
+    expect(containsSensitiveInfo('E11000 duplicate key error')).toBe(true);
+  });
+
+  it('should detect Redis errors', () => {
+    expect(containsSensitiveInfo('WRONGTYPE Operation against a key')).toBe(true);
+    expect(containsSensitiveInfo('ReplyError: CLUSTERDOWN')).toBe(true);
+    expect(containsSensitiveInfo('READONLY You can\'t write against a read only replica')).toBe(true);
+  });
+
+  it('should detect connection strings', () => {
+    expect(containsSensitiveInfo('Failed to connect to mongodb://admin:pass@10.0.0.1/db')).toBe(true);
+    expect(containsSensitiveInfo('postgres://user:pass@host/db')).toBe(true);
+    expect(containsSensitiveInfo('mysql://root@localhost/app')).toBe(true);
+    expect(containsSensitiveInfo('redis://default:pass@cache:6379')).toBe(true);
+    expect(containsSensitiveInfo('mongodb+srv://user:pass@cluster.mongodb.net')).toBe(true);
+  });
+
+  it('should detect stack traces with file paths', () => {
+    expect(containsSensitiveInfo('at UserService.findById (src/services/user.ts:42')).toBe(true);
+    expect(containsSensitiveInfo('at Object.<anonymous> (app.js:15')).toBe(true);
+  });
+
+  it('should detect internal IP addresses', () => {
+    expect(containsSensitiveInfo('Connection refused 127.0.0.1:5432')).toBe(true);
+    expect(containsSensitiveInfo('Timeout connecting to 10.0.1.55')).toBe(true);
+    expect(containsSensitiveInfo('ECONNREFUSED 192.168.1.100:3306')).toBe(true);
+    expect(containsSensitiveInfo('Failed at 172.16.0.5:27017')).toBe(true);
+  });
+
+  it('should not flag generic messages', () => {
+    expect(containsSensitiveInfo('Not found')).toBe(false);
+    expect(containsSensitiveInfo('Invalid email format')).toBe(false);
+    expect(containsSensitiveInfo('Rate limit exceeded')).toBe(false);
+    expect(containsSensitiveInfo('Unauthorized')).toBe(false);
+    expect(containsSensitiveInfo('Bad request')).toBe(false);
+  });
+});
+
+describe('Sensitive Error Scrubbing', () => {
+  it('should scrub DB errors even when expose is true (production)', () => {
+    const req = mockRequest();
+    const res = mockResponse();
+    const next = vi.fn();
+    const handler = errorHandler(false);
+    const error: Error & { statusCode?: number; expose?: boolean } = new Error(
+      'relation "users" does not exist'
+    );
+    error.statusCode = 500;
+    error.expose = true;
+
+    handler(error, req as Request, res as Response, next as NextFunction);
+
+    const jsonCall = res.json.mock.calls[0][0];
+    expect(jsonCall.error).toBe('Internal Server Error');
+  });
+
+  it('should show DB errors in dev mode even if sensitive', () => {
+    const req = mockRequest();
+    const res = mockResponse();
+    const next = vi.fn();
+    const handler = errorHandler(true);
+    const error = new Error('relation "users" does not exist');
+
+    handler(error, req as Request, res as Response, next as NextFunction);
+
+    const jsonCall = res.json.mock.calls[0][0];
+    expect(jsonCall.error).toContain('relation');
+    expect(jsonCall.details).toContain('relation');
+  });
+
+  it('should scrub connection strings in error messages', () => {
+    const req = mockRequest();
+    const res = mockResponse();
+    const next = vi.fn();
+    const handler = errorHandler(false);
+    const error: Error & { expose?: boolean } = new Error(
+      'Failed to connect to mongodb://admin:secret@10.0.0.1:27017/production'
+    );
+    error.expose = true;
+
+    handler(error, req as Request, res as Response, next as NextFunction);
+
+    const jsonCall = res.json.mock.calls[0][0];
+    expect(jsonCall.error).toBe('Internal Server Error');
+    expect(JSON.stringify(jsonCall)).not.toContain('mongodb://');
+    expect(JSON.stringify(jsonCall)).not.toContain('10.0.0.1');
+  });
+
+  it('should allow safe exposed messages through', () => {
+    const req = mockRequest();
+    const res = mockResponse();
+    const next = vi.fn();
+    const handler = errorHandler(false);
+    const error: Error & { statusCode?: number; expose?: boolean } = new Error('Email already registered');
+    error.statusCode = 409;
+    error.expose = true;
+
+    handler(error, req as Request, res as Response, next as NextFunction);
+
+    const jsonCall = res.json.mock.calls[0][0];
+    expect(jsonCall.error).toBe('Email already registered');
   });
 });
 

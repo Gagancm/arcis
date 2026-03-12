@@ -37,6 +37,7 @@ export const mockResponse = (): Partial<Response> & {
   setHeader: ReturnType<typeof vi.fn>;
   removeHeader: ReturnType<typeof vi.fn>;
   send: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
 } => {
   const res: Record<string, unknown> = {};
   res.status = vi.fn().mockReturnValue(res);
@@ -44,6 +45,7 @@ export const mockResponse = (): Partial<Response> & {
   res.setHeader = vi.fn().mockReturnValue(res);
   res.removeHeader = vi.fn().mockReturnValue(res);
   res.send = vi.fn().mockReturnValue(res);
+  res.end = vi.fn().mockReturnValue(res);
   return res as ReturnType<typeof mockResponse>;
 };
 

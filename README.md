@@ -5,7 +5,7 @@ arcis One-line security middleware for Node.js, Python, and Go.
 Arcis protects your code like how Dependabot protects your dependencies.
 
 
-**12 attack vectors handled so far.**
+**15 attack vectors handled so far.**
 
 | Category | What it stops |
 |----------|--------------|
@@ -18,11 +18,14 @@ Arcis protects your code like how Dependabot protects your dependencies.
 | HTTP Header Injection | CRLF injection, response splitting, null bytes |
 | SSRF | Private IPs, loopback, link-local, cloud metadata, dangerous protocols |
 | Open Redirect | Absolute URLs, `javascript:`, protocol-relative, backslash/control char bypass |
+| Error Leakage | Stack traces, DB errors, connection strings, internal IPs scrubbed in production |
+| CORS Misconfiguration | Whitelist-based origins, `null` origin blocked, `Vary: Origin` enforced |
+| Cookie Security | HttpOnly, Secure, SameSite enforced on all cookies |
 | Rate Limiting | Per-IP, in-memory or Redis, `X-RateLimit-*` headers |
 | Security Headers | CSP, HSTS, X-Frame-Options, 10 headers out of the box |
 | Input Validation | Type checking, ranges, enums, mass assignment prevention, safe logging |
 
-**930+ tests** across Node.js (564) and Python (367).
+**1040+ tests** across Node.js (613) and Python (430).
 
 ## Install
 
@@ -153,7 +156,7 @@ e.Use(arcisecho.Middleware())
 
 ## What It Does
 
-One `app.use(arcis())` gives you all 12 categories above. Or use individual functions for fine-grained control:
+One `app.use(arcis())` gives you all 15 categories above. Or use individual functions for fine-grained control:
 
 - **Sanitize** — `sanitizeString()`, `sanitizeObject()` strip dangerous patterns
 - **Detect** — `detectXss()`, `detectSql()`, `detectHeaderInjection()` flag threats without modifying input
