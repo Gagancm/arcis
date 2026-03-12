@@ -4,3 +4,4 @@
  */
 
 export { validate, createValidator } from './schema';
+export { validateFile, sanitizeFilename, isDangerousExtension } from './file';
