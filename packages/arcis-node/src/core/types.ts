@@ -84,7 +84,8 @@ export type ThreatType =
   | 'nosql_injection'
   | 'path_traversal'
   | 'command_injection'
-  | 'prototype_pollution';
+  | 'prototype_pollution'
+  | 'header_injection';
 
 // =============================================================================
 // RATE LIMITING

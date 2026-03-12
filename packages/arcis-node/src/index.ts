@@ -52,11 +52,14 @@ export { sanitizePath, detectPathTraversal } from './sanitizers/path';
 export { sanitizeCommand, detectCommandInjection } from './sanitizers/command';
 export { isDangerousNoSqlKey, detectNoSqlInjection } from './sanitizers/nosql';
 export { isDangerousProtoKey, detectPrototypePollution } from './sanitizers/prototype';
+export { sanitizeHeaderValue, sanitizeHeaders, detectHeaderInjection } from './sanitizers/headers';
 
 // =============================================================================
 // VALIDATION
 // =============================================================================
 export { validate, createValidator } from './validation/schema';
+export { validateUrl, isUrlSafe } from './validation/url';
+export { validateRedirect, isRedirectSafe } from './validation/redirect';
 
 // =============================================================================
 // LOGGING
@@ -104,6 +107,10 @@ export type {
   ErrorHandlerOptions,
   HttpError,
 } from './core/types';
+
+// URL validation types
+export type { ValidateUrlOptions, ValidateUrlResult } from './validation/url';
+export type { ValidateRedirectOptions, ValidateRedirectResult } from './validation/redirect';
 
 // Redis store types
 export type { RedisClientLike, RedisStoreOptions } from './stores/redis';

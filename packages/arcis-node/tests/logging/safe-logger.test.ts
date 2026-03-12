@@ -162,7 +162,7 @@ describe('createSafeLogger', () => {
 
       const output = JSON.parse(consoleLogSpy.mock.calls[0][0]);
       expect(output.data.user.email).toBe('test@test.com');
-      expect(output.data.user.credentials.password).toBe(REDACTION.REPLACEMENT);
+      expect(output.data.user.credentials).toBe(REDACTION.REPLACEMENT);
     });
 
     it('should redact arrays with sensitive data', () => {
@@ -380,9 +380,7 @@ describe('createRedactor', () => {
     expect(result).toEqual({
       user: {
         name: 'John',
-        credentials: {
-          password: REDACTION.REPLACEMENT,
-        },
+        credentials: REDACTION.REPLACEMENT,
       },
     });
   });

@@ -76,3 +76,9 @@ desktop.ini
 *.p12
 secrets.json
 *.claude
+
+# ─── Local / Personal ────────────────────────────────────────────────────────
+audit/
+docs/
+arcis.sln
+AUDIT_SYSTEM.md

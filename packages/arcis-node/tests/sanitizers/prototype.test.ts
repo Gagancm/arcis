@@ -21,6 +21,46 @@ describe('isDangerousProtoKey', () => {
     });
   });
 
+  describe('Case-Insensitive Detection', () => {
+    it('should detect __PROTO__', () => {
+      expect(isDangerousProtoKey('__PROTO__')).toBe(true);
+    });
+
+    it('should detect Constructor', () => {
+      expect(isDangerousProtoKey('Constructor')).toBe(true);
+    });
+
+    it('should detect PROTOTYPE', () => {
+      expect(isDangerousProtoKey('PROTOTYPE')).toBe(true);
+    });
+
+    it('should detect __Proto__', () => {
+      expect(isDangerousProtoKey('__Proto__')).toBe(true);
+    });
+
+    it('should detect __DEFINEGETTER__', () => {
+      expect(isDangerousProtoKey('__DEFINEGETTER__')).toBe(true);
+    });
+  });
+
+  describe('Legacy Prototype Methods', () => {
+    it('should detect __defineGetter__', () => {
+      expect(isDangerousProtoKey('__defineGetter__')).toBe(true);
+    });
+
+    it('should detect __defineSetter__', () => {
+      expect(isDangerousProtoKey('__defineSetter__')).toBe(true);
+    });
+
+    it('should detect __lookupGetter__', () => {
+      expect(isDangerousProtoKey('__lookupGetter__')).toBe(true);
+    });
+
+    it('should detect __lookupSetter__', () => {
+      expect(isDangerousProtoKey('__lookupSetter__')).toBe(true);
+    });
+  });
+
   describe('Safe Keys', () => {
     it('should allow normal field names', () => {
       expect(isDangerousProtoKey('name')).toBe(false);
@@ -99,6 +139,39 @@ describe('detectPrototypePollution', () => {
     });
   });
 
+  describe('Case-Insensitive Detection', () => {
+    it('should detect __PROTO__ (via JSON.parse)', () => {
+      const obj = JSON.parse('{"__PROTO__": {"admin": true}}');
+      expect(detectPrototypePollution(obj)).toBe(true);
+    });
+
+    it('should detect Constructor', () => {
+      expect(detectPrototypePollution({ Constructor: { prototype: {} } })).toBe(true);
+    });
+
+    it('should detect PROTOTYPE', () => {
+      expect(detectPrototypePollution({ PROTOTYPE: {} })).toBe(true);
+    });
+  });
+
+  describe('Legacy Prototype Methods', () => {
+    it('should detect __defineGetter__', () => {
+      expect(detectPrototypePollution({ __defineGetter__: {} })).toBe(true);
+    });
+
+    it('should detect __defineSetter__', () => {
+      expect(detectPrototypePollution({ __defineSetter__: {} })).toBe(true);
+    });
+
+    it('should detect __lookupGetter__', () => {
+      expect(detectPrototypePollution({ __lookupGetter__: {} })).toBe(true);
+    });
+
+    it('should detect nested __defineGetter__', () => {
+      expect(detectPrototypePollution({ a: { __defineGetter__: {} } })).toBe(true);
+    });
+  });
+
   describe('Safe Objects', () => {
     it('should return false for safe objects', () => {
       expect(detectPrototypePollution({ name: 'John', age: 30 })).toBe(false);
@@ -156,5 +229,25 @@ describe('getDangerousProtoKeys', () => {
   it('should include prototype', () => {
     const keys = getDangerousProtoKeys();
     expect(keys).toContain('prototype');
+  });
+
+  it('should include __definegetter__', () => {
+    const keys = getDangerousProtoKeys();
+    expect(keys).toContain('__definegetter__');
+  });
+
+  it('should include __definesetter__', () => {
+    const keys = getDangerousProtoKeys();
+    expect(keys).toContain('__definesetter__');
+  });
+
+  it('should include __lookupgetter__', () => {
+    const keys = getDangerousProtoKeys();
+    expect(keys).toContain('__lookupgetter__');
+  });
+
+  it('should include __lookupsetter__', () => {
+    const keys = getDangerousProtoKeys();
+    expect(keys).toContain('__lookupsetter__');
   });
 });

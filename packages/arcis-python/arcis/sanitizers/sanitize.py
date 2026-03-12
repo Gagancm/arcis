@@ -62,7 +62,7 @@ class Sanitizer:
         # Prototype pollution dangerous keys
         self._proto_keys: Set[str] = set(
             PATTERNS.get("patterns", {}).get("prototype_pollution", {}).get("dangerous_keys", [])
-        ) or {"__proto__", "constructor", "prototype"}
+        ) or {"__proto__", "constructor", "prototype", "__definegetter__", "__definesetter__", "__lookupgetter__", "__lookupsetter__"}
 
         # Path traversal patterns
         self._path_patterns = []

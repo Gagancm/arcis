@@ -88,12 +88,29 @@ from .core import (
     validate_uuid,
 )
 
+from .validation.url import (
+    validate_url_ssrf,
+    is_url_safe,
+    ValidateUrlOptions,
+    ValidateUrlResult,
+)
+
+from .validation.redirect import (
+    validate_redirect,
+    is_redirect_safe,
+    ValidateRedirectOptions,
+    ValidateRedirectResult,
+)
+
 from .sanitizers import (
     sanitize_xss,
     sanitize_sql,
     sanitize_nosql,
     sanitize_path,
     sanitize_command,
+    sanitize_header_value,
+    sanitize_headers,
+    detect_header_injection,
 )
 
 # Async components (for FastAPI)
@@ -139,6 +156,17 @@ __all__ = [
     "sanitize_nosql",
     "sanitize_path",
     "sanitize_command",
+    "sanitize_header_value",
+    "sanitize_headers",
+    "detect_header_injection",
+    "validate_url_ssrf",
+    "is_url_safe",
+    "ValidateUrlOptions",
+    "ValidateUrlResult",
+    "validate_redirect",
+    "is_redirect_safe",
+    "ValidateRedirectOptions",
+    "ValidateRedirectResult",
     "validate_email",
     "validate_url",
     "validate_uuid",

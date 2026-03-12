@@ -18,5 +18,8 @@ export { isDangerousNoSqlKey, detectNoSqlInjection, getDangerousOperators } from
 // Prototype pollution protection
 export { isDangerousProtoKey, detectPrototypePollution, getDangerousProtoKeys } from './prototype';
 
+// HTTP Header Injection protection
+export { sanitizeHeaderValue, sanitizeHeaders, detectHeaderInjection } from './headers';
+
 // Utilities
 export { encodeHtmlEntities, isPlainObject } from './utils';

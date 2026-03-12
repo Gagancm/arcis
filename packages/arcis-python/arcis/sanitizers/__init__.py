@@ -5,6 +5,7 @@ Provides the Sanitizer class and per-type convenience functions.
 """
 
 from .sanitize import Sanitizer
+from .headers import sanitize_header_value, sanitize_headers, detect_header_injection
 from typing import Dict
 
 
@@ -46,4 +47,7 @@ __all__ = [
     "sanitize_nosql",
     "sanitize_path",
     "sanitize_command",
+    "sanitize_header_value",
+    "sanitize_headers",
+    "detect_header_injection",
 ]

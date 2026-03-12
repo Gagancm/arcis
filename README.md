@@ -179,6 +179,7 @@ import { MemoryStore } from '@arcis/node/stores';
 
 **Node.js roadmap:** Built-in adapters for Fastify, Koa, and Hono are planned. The core functions already work with these frameworks — you just wire a short middleware wrapper (see examples above).
 
+
 ## How It Works
 
 All SDKs load security patterns from a shared `patterns.json` at runtime. A shared spec (`API_SPEC.md`) and test vectors (`TEST_VECTORS.json`) enforce identical behavior across languages.
