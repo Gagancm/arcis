@@ -1,8 +1,23 @@
 # Arcis
 
-Cross-platform security library for Node.js, Python, and Go.
+One-line security middleware for Node.js, Python, and Go. **12 attack vectors handled so far.**
 
-XSS, SQL injection, NoSQL injection, path traversal, command injection, rate limiting, security headers, schema validation, and safe logging — handled.
+| Category | What it stops |
+|----------|--------------|
+| XSS | Script injection, event handlers, `javascript:` URIs, SVG/iframe payloads |
+| SQL Injection | Keywords, boolean logic, comments, time-based blind (`SLEEP`, `BENCHMARK`) |
+| NoSQL Injection | MongoDB operators (`$gt`, `$where`, `$regex`, 25+ blocked operators) |
+| Command Injection | Shell metacharacters, dangerous commands, redirections |
+| Path Traversal | `../`, encoded variants (`%2e%2e`), null byte injection |
+| Prototype Pollution | `__proto__`, `constructor`, `__defineGetter__`, 7 keys blocked (case-insensitive) |
+| HTTP Header Injection | CRLF injection, response splitting, null bytes |
+| SSRF | Private IPs, loopback, link-local, cloud metadata, dangerous protocols |
+| Open Redirect | Absolute URLs, `javascript:`, protocol-relative, backslash/control char bypass |
+| Rate Limiting | Per-IP, in-memory or Redis, `X-RateLimit-*` headers |
+| Security Headers | CSP, HSTS, X-Frame-Options, 10 headers out of the box |
+| Input Validation | Type checking, ranges, enums, mass assignment prevention, safe logging |
+
+**930+ tests** across Node.js (564) and Python (367).
 
 ## Install
 
@@ -133,12 +148,12 @@ e.Use(arcisecho.Middleware())
 
 ## What It Does
 
-- **Input sanitization** — XSS, SQL injection, NoSQL injection, path traversal, command injection
-- **Rate limiting** — per-IP, in-memory or Redis, with `X-RateLimit-*` headers
-- **Security headers** — CSP, HSTS, X-Frame-Options, and more out of the box
-- **Schema validation** — type checking, ranges, enums, mass assignment prevention
-- **Safe logging** — sensitive key redaction, log injection prevention
-- **Error handling** — production-safe error responses (no stack traces leaked)
+One `app.use(arcis())` gives you all 12 categories above. Or use individual functions for fine-grained control:
+
+- **Sanitize** — `sanitizeString()`, `sanitizeObject()` strip dangerous patterns
+- **Detect** — `detectXss()`, `detectSql()`, `detectHeaderInjection()` flag threats without modifying input
+- **Validate** — `validateUrl()` blocks SSRF, `validateRedirect()` blocks open redirects
+- **Protect** — rate limiting, security headers, safe logging, error handling
 
 ## Architecture
 
