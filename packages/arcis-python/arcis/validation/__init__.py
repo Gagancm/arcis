@@ -6,6 +6,7 @@ from .validators import Validator, ValidationError, validate_email, validate_url
 from .schema import SchemaValidator, create_validator
 from .url import validate_url_ssrf, is_url_safe, ValidateUrlOptions, ValidateUrlResult
 from .redirect import validate_redirect, is_redirect_safe, ValidateRedirectOptions, ValidateRedirectResult
+from .file import validate_file, sanitize_filename, is_dangerous_extension, ValidateFileResult
 
 __all__ = [
     "Validator",
@@ -23,4 +24,8 @@ __all__ = [
     "is_redirect_safe",
     "ValidateRedirectOptions",
     "ValidateRedirectResult",
+    "validate_file",
+    "sanitize_filename",
+    "is_dangerous_extension",
+    "ValidateFileResult",
 ]
