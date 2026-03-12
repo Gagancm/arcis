@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  # Node.js
+  - package-ecosystem: "npm"
+    directory: "/packages/arcis-node"
+    schedule:
+      interval: "weekly"
+
+  # Python
+  - package-ecosystem: "pip"
+    directory: "/packages/arcis-python"
+    schedule:
+      interval: "weekly"
+
+  # Go
+  - package-ecosystem: "gomod"
+    directory: "/packages/arcis-go"
+    schedule:
+      interval: "weekly"
+
+  # GitHub Actions (once you add CI)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
