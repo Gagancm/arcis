@@ -162,10 +162,13 @@ export function createSanitizer(options: SanitizeOptions = {}): RequestHandler {
         req.body = sanitizeObject(req.body, options);
       }
       if (req.query && typeof req.query === 'object') {
-        req.query = sanitizeObject(req.query, options) as typeof req.query;
+        const sanitizedQuery = sanitizeObject(req.query, options);
+        // Express 5: req.query is a getter with no setter — override on instance
+        Object.defineProperty(req, 'query', { value: sanitizedQuery, writable: true, configurable: true });
       }
       if (req.params && typeof req.params === 'object') {
-        req.params = sanitizeObject(req.params, options) as typeof req.params;
+        const sanitizedParams = sanitizeObject(req.params, options);
+        Object.defineProperty(req, 'params', { value: sanitizedParams, writable: true, configurable: true });
       }
       next();
     } catch (err) {
