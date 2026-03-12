@@ -1,6 +1,11 @@
 # Arcis
 
-One-line security middleware for Node.js, Python, and Go. **12 attack vectors handled so far.**
+arcis One-line security middleware for Node.js, Python, and Go.
+
+Arcis protects your code like how Dependabot protects your dependencies.
+
+
+**12 attack vectors handled so far.**
 
 | Category | What it stops |
 |----------|--------------|
