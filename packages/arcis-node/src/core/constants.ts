@@ -195,11 +195,25 @@ export const COMMAND_PATTERNS = [
 // DANGEROUS KEYS
 // =============================================================================
 
-/** Prototype pollution keys to block */
+/**
+ * Prototype pollution keys to block.
+ * Stored lowercase — always compare with key.toLowerCase().
+ *
+ * Includes:
+ * - __proto__: direct prototype assignment
+ * - constructor: access to constructor.prototype chain
+ * - prototype: direct prototype property
+ * - __defineGetter__/__defineSetter__: legacy property definition (can override getters/setters)
+ * - __lookupGetter__/__lookupSetter__: legacy property introspection
+ */
 export const DANGEROUS_PROTO_KEYS = new Set([
   '__proto__',
   'constructor',
   'prototype',
+  '__definegetter__',
+  '__definesetter__',
+  '__lookupgetter__',
+  '__lookupsetter__',
 ]);
 
 /** MongoDB operators to block */
@@ -238,6 +252,7 @@ export const REDACTION = {
     'creditcard', 'cc', 'ssn', 'social_security', 'private_key',
     'privateKey', 'access_token', 'accessToken', 'refresh_token',
     'refreshToken', 'bearer', 'jwt', 'session', 'cookie',
+    'credentials', 'x-api-key', 'x-auth-token',
   ]),
 } as const;
 

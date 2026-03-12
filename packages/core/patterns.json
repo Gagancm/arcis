@@ -259,7 +259,7 @@
       "severity": "high",
       "owasp": "A03:2021",
       "languages": ["javascript", "typescript"],
-      "dangerous_keys": ["__proto__", "constructor", "prototype"]
+      "dangerous_keys": ["__proto__", "constructor", "prototype", "__definegetter__", "__definesetter__", "__lookupgetter__", "__lookupsetter__"]
     },
     "ldap_injection": {
       "name": "LDAP Injection",

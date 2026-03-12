@@ -7,16 +7,19 @@ import { DANGEROUS_PROTO_KEYS } from '../core/constants';
 
 /**
  * Checks if a key is dangerous for prototype pollution.
- * 
+ * Case-insensitive — catches __PROTO__, Constructor, etc.
+ *
  * @param key - The key to check
  * @returns True if the key could cause prototype pollution
- * 
+ *
  * @example
- * isDangerousProtoKey('__proto__') // true
- * isDangerousProtoKey('name') // false
+ * isDangerousProtoKey('__proto__')   // true
+ * isDangerousProtoKey('__PROTO__')   // true
+ * isDangerousProtoKey('Constructor') // true
+ * isDangerousProtoKey('name')        // false
  */
 export function isDangerousProtoKey(key: string): boolean {
-  return DANGEROUS_PROTO_KEYS.has(key);
+  return DANGEROUS_PROTO_KEYS.has(key.toLowerCase());
 }
 
 /**
@@ -35,7 +38,7 @@ export function detectPrototypePollution(obj: unknown, maxDepth = 10): boolean {
   }
   
   for (const key of Object.keys(obj as Record<string, unknown>)) {
-    if (isDangerousProtoKey(key)) {
+    if (DANGEROUS_PROTO_KEYS.has(key.toLowerCase())) {
       return true;
     }
     

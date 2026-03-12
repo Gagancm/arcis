@@ -144,6 +144,65 @@ class TestSanitizeObjectPrototypePollution:
         assert "prototype" not in result
         assert "value" in result
 
+    def test_blocks_case_insensitive_proto(self):
+        sanitizer = Sanitizer()
+        data = {"__PROTO__": {"admin": True}, "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__PROTO__" not in result
+        assert "name" in result
+
+    def test_blocks_case_insensitive_constructor(self):
+        sanitizer = Sanitizer()
+        data = {"Constructor": {"prototype": {}}, "email": "test@test.com"}
+        result = sanitizer.sanitize_dict(data)
+        assert "Constructor" not in result
+        assert "email" in result
+
+    def test_blocks_case_insensitive_prototype(self):
+        sanitizer = Sanitizer()
+        data = {"PROTOTYPE": {"isAdmin": True}, "value": 123}
+        result = sanitizer.sanitize_dict(data)
+        assert "PROTOTYPE" not in result
+        assert "value" in result
+
+    def test_blocks_mixed_case_proto(self):
+        sanitizer = Sanitizer()
+        data = {"__Proto__": {"polluted": True}, "safe": "value"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__Proto__" not in result
+        assert "safe" in result
+
+    def test_blocks_defineGetter(self):
+        sanitizer = Sanitizer()
+        data = {"__defineGetter__": "toString", "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__defineGetter__" not in result
+        assert "name" in result
+
+    def test_blocks_defineSetter(self):
+        sanitizer = Sanitizer()
+        data = {"__defineSetter__": "valueOf", "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__defineSetter__" not in result
+
+    def test_blocks_lookupGetter(self):
+        sanitizer = Sanitizer()
+        data = {"__lookupGetter__": "toString", "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__lookupGetter__" not in result
+
+    def test_blocks_lookupSetter(self):
+        sanitizer = Sanitizer()
+        data = {"__lookupSetter__": "valueOf", "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__lookupSetter__" not in result
+
+    def test_blocks_nested_case_insensitive(self):
+        sanitizer = Sanitizer()
+        data = {"user": {"__PROTO__": {"admin": True}}, "name": "test"}
+        result = sanitizer.sanitize_dict(data)
+        assert "__PROTO__" not in result.get("user", {})
+
 
 class TestSanitizeObjectNoSQLInjection:
     """Test NoSQL injection prevention in sanitize_object."""

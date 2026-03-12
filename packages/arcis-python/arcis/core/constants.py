@@ -110,7 +110,9 @@ def get_embedded_patterns() -> Dict:
                 ]
             },
             "prototype_pollution": {
-                "dangerous_keys": ["__proto__", "constructor", "prototype"]
+                "dangerous_keys": ["__proto__", "constructor", "prototype",
+                                   "__definegetter__", "__definesetter__",
+                                   "__lookupgetter__", "__lookupsetter__"]
             }
         },
         "security_headers": {

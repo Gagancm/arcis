@@ -54,8 +54,7 @@ describe('isDangerousNoSqlKey', () => {
       expect(isDangerousNoSqlKey('$not')).toBe(true);
     });
 
-    // Note: $nor is NOT in the current NOSQL_DANGEROUS_KEYS set
-    // If you need it, add it to src/core/constants.ts
+    // $nor IS in NOSQL_DANGEROUS_KEYS (added with expanded operator coverage)
   });
 
   describe('Dangerous Operators', () => {

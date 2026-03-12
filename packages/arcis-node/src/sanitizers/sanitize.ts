@@ -110,8 +110,8 @@ function sanitizeObjectDepth(
   const result: Record<string, unknown> = {};
 
   for (const key of Object.keys(obj)) {
-    // Prototype pollution protection - always block dangerous keys
-    if (options.proto !== false && DANGEROUS_PROTO_KEYS.has(key)) {
+    // Prototype pollution protection - always block dangerous keys (case-insensitive)
+    if (options.proto !== false && DANGEROUS_PROTO_KEYS.has(key.toLowerCase())) {
       continue;
     }
 
