@@ -1,3 +1,5 @@
+![Arcis logo](arcis/logo%20arcis.png)
+
 # Arcis
 
 [![npm version](https://img.shields.io/npm/v/@arcis/node.svg)](https://www.npmjs.com/package/@arcis/node)
