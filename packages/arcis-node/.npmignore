@@ -1,0 +1,9 @@
+src/
+tests/
+tsup.config.ts
+tsconfig.json
+.eslintrc.*
+vitest.config.*
+coverage/
+node_modules/
+*.tsbuildinfo

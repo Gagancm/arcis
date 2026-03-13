@@ -11,7 +11,7 @@ license = {text = "MIT"}
 authors = [
     {name = "Gagan CM", email = "gagancm@users.noreply.github.com"}
 ]
-keywords = ["security", "xss", "sql-injection", "rate-limiting", "flask", "fastapi", "django"]
+keywords = ["security", "xss", "sql-injection", "nosql-injection", "rate-limiting", "flask", "fastapi", "django", "ssrf", "open-redirect", "cors", "sanitize", "middleware", "web-security", "input-validation", "command-injection", "path-traversal"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -22,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Framework :: Flask",
     "Framework :: FastAPI",
     "Framework :: Django",

@@ -1,0 +1,222 @@
+# Arcis
+
+arcis One-line security middleware for Node.js, Python, and Go.
+
+Arcis protects your code like how Dependabot protects your dependencies.
+
+
+**15 attack vectors handled so far.**
+
+| Category | What it stops |
+|----------|--------------|
+| XSS | Script injection, event handlers, `javascript:` URIs, SVG/iframe payloads |
+| SQL Injection | Keywords, boolean logic, comments, time-based blind (`SLEEP`, `BENCHMARK`) |
+| NoSQL Injection | MongoDB operators (`$gt`, `$where`, `$regex`, 25+ blocked operators) |
+| Command Injection | Shell metacharacters, dangerous commands, redirections |
+| Path Traversal | `../`, encoded variants (`%2e%2e`), null byte injection |
+| Prototype Pollution | `__proto__`, `constructor`, `__defineGetter__`, 7 keys blocked (case-insensitive) |
+| HTTP Header Injection | CRLF injection, response splitting, null bytes |
+| SSRF | Private IPs, loopback, link-local, cloud metadata, dangerous protocols |
+| Open Redirect | Absolute URLs, `javascript:`, protocol-relative, backslash/control char bypass |
+| Error Leakage | Stack traces, DB errors, connection strings, internal IPs scrubbed in production |
+| CORS Misconfiguration | Whitelist-based origins, `null` origin blocked, `Vary: Origin` enforced |
+| Cookie Security | HttpOnly, Secure, SameSite enforced on all cookies |
+| Rate Limiting | Per-IP, in-memory or Redis, `X-RateLimit-*` headers |
+| Security Headers | CSP, HSTS, X-Frame-Options, 10 headers out of the box |
+| Input Validation | Type checking, ranges, enums, mass assignment prevention, safe logging |
+
+**1040+ tests** across Node.js (613) and Python (430).
+
+## Install
+
+```bash
+npm install @arcis/node          # Node.js
+pip install arcis                # Python
+go get github.com/GagancM/arcis  # Go
+```
+
+**Install directly from GitHub:**
+
+```bash
+# Node.js
+npm install github:Gagancm/arcis#main --install-strategy=nested
+
+# Python
+pip install git+https://github.com/Gagancm/arcis.git#subdirectory=packages/arcis-python
+
+# Go
+go get github.com/Gagancm/arcis
+```
+
+## Quick Start
+
+### Node.js
+
+Arcis has two layers: **framework-agnostic core functions** that work anywhere, and **middleware adapters** for specific frameworks.
+
+#### With Express (built-in adapter)
+
+```js
+import { arcis } from '@arcis/node';
+
+app.use(arcis());
+// That's it. Sanitization, rate limiting, and security headers are on.
+```
+
+#### With any framework (Fastify, Koa, Hono, etc.)
+
+The core sanitization, validation, and logging functions have zero framework dependencies. Use them directly in any Node.js project:
+
+```js
+import {
+  sanitizeString,
+  sanitizeObject,
+  detectXss,
+  detectSql,
+  detectCommandInjection,
+  detectPathTraversal,
+  createSafeLogger,
+  createRedactor,
+} from '@arcis/node';
+
+// Sanitize user input — works anywhere
+const clean = sanitizeString(userInput);
+const cleanBody = sanitizeObject(requestBody);
+
+// Detect threats without sanitizing
+if (detectXss(value)) { /* reject */ }
+if (detectSql(value)) { /* reject */ }
+
+// Safe logging — no framework needed
+const logger = createSafeLogger();
+logger.info('User login', { email, password: 'will-be-redacted' });
+```
+
+**Writing your own middleware is straightforward.** Here's a Fastify example:
+
+```js
+import { sanitizeObject } from '@arcis/node';
+
+fastify.addHook('preHandler', async (request, reply) => {
+  if (request.body) request.body = sanitizeObject(request.body);
+  if (request.query) request.query = sanitizeObject(request.query);
+});
+```
+
+Koa:
+
+```js
+import { sanitizeObject } from '@arcis/node';
+
+app.use(async (ctx, next) => {
+  if (ctx.request.body) ctx.request.body = sanitizeObject(ctx.request.body);
+  if (ctx.query) ctx.query = sanitizeObject(ctx.query);
+  await next();
+});
+```
+
+Hono:
+
+```js
+import { sanitizeObject } from '@arcis/node';
+
+app.use('*', async (c, next) => {
+  const body = await c.req.json().catch(() => null);
+  if (body) c.set('sanitizedBody', sanitizeObject(body));
+  await next();
+});
+```
+
+> Built-in adapters for Fastify, Koa, and Hono are on the roadmap. The core functions work today.
+
+### Python
+
+```python
+# Flask
+from arcis import Arcis
+Arcis(app)
+
+# FastAPI
+from arcis import ArcisMiddleware
+app.add_middleware(ArcisMiddleware)
+
+# Django — add to MIDDLEWARE in settings.py
+'arcis.django.ArcisMiddleware'
+```
+
+### Go
+
+```go
+// Gin
+r.Use(arcisgin.Middleware())
+
+// Echo
+e.Use(arcisecho.Middleware())
+```
+
+## What It Does
+
+One `app.use(arcis())` gives you all 15 categories above. Or use individual functions for fine-grained control:
+
+- **Sanitize** — `sanitizeString()`, `sanitizeObject()` strip dangerous patterns
+- **Detect** — `detectXss()`, `detectSql()`, `detectHeaderInjection()` flag threats without modifying input
+- **Validate** — `validateUrl()` blocks SSRF, `validateRedirect()` blocks open redirects
+- **Protect** — rate limiting, security headers, safe logging, error handling
+
+## Architecture
+
+Arcis separates **core security logic** from **framework adapters**:
+
+```
+@arcis/node
+├── Core (framework-agnostic)
+│   ├── sanitizeString / sanitizeObject   — clean any input
+│   ├── detectXss / detectSql / ...       — threat detection
+│   ├── createSafeLogger / createRedactor — safe logging
+│   ├── MemoryStore / RedisStore          — rate limit backends
+│   └── Error classes and constants
+│
+└── Adapters (framework-specific)
+    └── Express middleware (arcis(), arcis.sanitize(), arcis.rateLimit(), ...)
+```
+
+The core functions are pure — no `req`, `res`, or `next`. They take values in and return values out. This means they work with Express, Fastify, Koa, Hono, Nest, raw `http.createServer`, Bun, Deno, serverless functions, or anything else.
+
+Subpath imports are available for tree-shaking:
+
+```js
+import { sanitizeString } from '@arcis/node/sanitizers';
+import { createSafeLogger } from '@arcis/node/logging';
+import { MemoryStore } from '@arcis/node/stores';
+```
+
+## Supported Frameworks
+
+| SDK | Built-in Adapters | Core Functions | Status |
+|-----|-------------------|----------------|--------|
+| Node.js | Express | Work with any framework | Stable |
+| Python | Flask, FastAPI, Django | Work standalone | Stable |
+| Go | net/http, Gin, Echo | Work standalone | Stable |
+| Java | Spring Boot | — | Planned |
+| C# | ASP.NET Core | — | Planned |
+
+**Node.js roadmap:** Built-in adapters for Fastify, Koa, and Hono are planned. The core functions already work with these frameworks — you just wire a short middleware wrapper (see examples above).
+
+
+## How It Works
+
+All SDKs load security patterns from a shared `patterns.json` at runtime. A shared spec (`API_SPEC.md`) and test vectors (`TEST_VECTORS.json`) enforce identical behavior across languages.
+
+## Documentation
+
+Detailed configuration, API reference, Redis setup, granular middleware usage, and architecture docs are in the [Wiki](https://github.com/Gagancm/arcis/wiki).
+
+## Contributing
+
+1. All changes must pass existing tests
+2. New features require test cases aligned with `spec/TEST_VECTORS.json`
+3. Pattern changes in `packages/core/patterns.json` must be reflected in all SDKs
+
+## License
+
+MIT
