@@ -63,15 +63,25 @@
     "middleware",
     "xss",
     "sql-injection",
+    "nosql-injection",
     "rate-limit",
     "sanitize",
     "validation",
     "csrf",
     "helmet",
     "nodejs",
-    "arcis"
+    "arcis",
+    "ssrf",
+    "open-redirect",
+    "cors",
+    "prototype-pollution",
+    "command-injection",
+    "path-traversal",
+    "security-headers",
+    "input-validation",
+    "web-security"
   ],
-  "author": "Your Name",
+  "author": "Gagan CM",
   "license": "MIT",
   "peerDependencies": {
     "express": ">=4.0.0"
