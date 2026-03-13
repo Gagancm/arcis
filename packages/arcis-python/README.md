@@ -1,8 +1,13 @@
 # Arcis Python
 
+[![PyPI version](https://img.shields.io/pypi/v/arcis.svg)](https://pypi.org/project/arcis/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/Gagancm/arcis/actions/workflows/ci.yml/badge.svg)](https://github.com/Gagancm/arcis/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/pypi/pyversions/arcis.svg)](https://pypi.org/project/arcis/)
+
 **One-line security for Python web applications.**
 
-Arcis is a cross-platform security library that provides drop-in protection against common web vulnerabilities. Part of the Arcis ecosystem with implementations for Node.js, Python, Go, Java, and C#.
+Arcis is a cross-platform security library that provides drop-in protection against common web vulnerabilities. Part of the [Arcis](https://github.com/Gagancm/arcis) ecosystem with implementations for Node.js, Python, and Go.
 
 ## Installation
 

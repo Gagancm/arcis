@@ -1,11 +1,15 @@
 # Arcis
 
-arcis One-line security middleware for Node.js, Python, and Go.
+[![npm version](https://img.shields.io/npm/v/@arcis/node.svg)](https://www.npmjs.com/package/@arcis/node)
+[![PyPI version](https://img.shields.io/pypi/v/arcis.svg)](https://pypi.org/project/arcis/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/Gagancm/arcis/actions/workflows/ci.yml/badge.svg)](https://github.com/Gagancm/arcis/actions/workflows/ci.yml)
+
+One-line security middleware for Node.js, Python, and Go.
 
 Arcis protects your code like how Dependabot protects your dependencies.
 
-
-**15 attack vectors handled so far.**
+**15 attack vectors handled. 1040+ tests. Zero dependencies.**
 
 | Category | What it stops |
 |----------|--------------|
@@ -25,27 +29,12 @@ Arcis protects your code like how Dependabot protects your dependencies.
 | Security Headers | CSP, HSTS, X-Frame-Options, 10 headers out of the box |
 | Input Validation | Type checking, ranges, enums, mass assignment prevention, safe logging |
 
-**1040+ tests** across Node.js (613) and Python (430).
-
 ## Install
 
 ```bash
 npm install @arcis/node          # Node.js
 pip install arcis                # Python
 go get github.com/GagancM/arcis  # Go
-```
-
-**Install directly from GitHub:**
-
-```bash
-# Node.js
-npm install github:Gagancm/arcis#main --install-strategy=nested
-
-# Python
-pip install git+https://github.com/Gagancm/arcis.git#subdirectory=packages/arcis-python
-
-# Go
-go get github.com/Gagancm/arcis
 ```
 
 ## Quick Start

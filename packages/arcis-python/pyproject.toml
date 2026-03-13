@@ -54,7 +54,7 @@ arcis = "arcis.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/GagancM/arcis"
-Documentation = "https://arcis.dev"
+Documentation = "https://github.com/Gagancm/arcis/wiki"
 Repository = "https://github.com/GagancM/arcis"
 Issues = "https://github.com/GagancM/arcis/issues"
 
