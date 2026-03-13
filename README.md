@@ -1,4 +1,3 @@
-![Arcis logo](arcis/logo%20arcis.png)
 
 # Arcis
 
