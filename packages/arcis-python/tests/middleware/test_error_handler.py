@@ -36,7 +36,7 @@ class TestContainsSensitiveInfo:
         assert contains_sensitive_info("postgres://user:pass@host/db")
         assert contains_sensitive_info("mysql://root@localhost/app")
         assert contains_sensitive_info("redis://default:pass@cache:6379")
-        assert contains_sensitive_info("mongodb+srv://user:pass@cluster.mongodb.net")
+        assert contains_sensitive_info("mongodb+srv://user:" + "pass@example.mongodb.net")
 
     def test_detects_python_tracebacks(self):
         assert contains_sensitive_info('File "/app/models/user.py", line 42')

@@ -190,7 +190,7 @@ describe('containsSensitiveInfo', () => {
     expect(containsSensitiveInfo('postgres://user:pass@host/db')).toBe(true);
     expect(containsSensitiveInfo('mysql://root@localhost/app')).toBe(true);
     expect(containsSensitiveInfo('redis://default:pass@cache:6379')).toBe(true);
-    expect(containsSensitiveInfo('mongodb+srv://user:pass@cluster.mongodb.net')).toBe(true);
+    expect(containsSensitiveInfo('mongodb+srv://user:' + 'pass@example.mongodb.net')).toBe(true);
   });
 
   it('should detect stack traces with file paths', () => {
