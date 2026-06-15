@@ -171,7 +171,10 @@ mod tests {
     #[test]
     fn arcis_telemetry_kill_switch() {
         for off in ["0", "false", "FALSE", "off", "No", " 0 "] {
-            assert!(opted_out(Some(off), None), "ARCIS_TELEMETRY={off:?} should opt out");
+            assert!(
+                opted_out(Some(off), None),
+                "ARCIS_TELEMETRY={off:?} should opt out"
+            );
         }
         // A truthy / unrelated value does NOT opt out (only explicit off values).
         assert!(!opted_out(Some("1"), None));
@@ -181,7 +184,10 @@ mod tests {
     #[test]
     fn do_not_track_standard() {
         for on in ["1", "true", "yes", "anything"] {
-            assert!(opted_out(None, Some(on)), "DO_NOT_TRACK={on:?} should opt out");
+            assert!(
+                opted_out(None, Some(on)),
+                "DO_NOT_TRACK={on:?} should opt out"
+            );
         }
         // The documented "tracking allowed" values do NOT opt out.
         assert!(!opted_out(None, Some("0")));
