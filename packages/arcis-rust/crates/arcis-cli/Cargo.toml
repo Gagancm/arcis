@@ -31,6 +31,11 @@ terminal_size = "0.4"
 # crossterm (ratatui's default).
 ratatui = { workspace = true }
 crossterm = { workspace = true }
+# Anonymous, opt-out CLI telemetry (telemetry.rs). reqwest is already built
+# (async) via arcis-engine; we add the `blocking` feature for a fire-and-forget
+# POST on a detached thread. uuid generates the persistent anonymous install id.
+reqwest = { workspace = true, features = ["blocking"] }
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 # End-to-end CLI tests under `tests/` need scratch dirs for fixtures

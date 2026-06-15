@@ -1,11 +1,13 @@
 # @arcis/mcp
 
-> Model Context Protocol server for Arcis. Plugs Arcis security tools into Cursor and any MCP-aware AI agent.
+> Runtime application security for AI coding agents. An MCP server that lets Cursor and any MCP-aware client defend the app from the inside: screen prompts and inputs for injection, probe a running endpoint for live attack bypasses, and check code and dependencies.
 
 [![npm version](https://img.shields.io/npm/v/@arcis/mcp.svg?label=%40arcis%2Fmcp&color=00996D)](https://www.npmjs.com/package/@arcis/mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-`@arcis/mcp` is a tiny Node binary that speaks the [Model Context Protocol](https://modelcontextprotocol.io/) over stdio. It exposes four Arcis tools so an AI coding agent can ask Arcis to audit code, scan for compromised dependencies, probe a live endpoint, or check a prompt for injection signatures, all without leaving the agent.
+`@arcis/mcp` is a tiny Node binary that speaks the [Model Context Protocol](https://modelcontextprotocol.io/) over stdio. Most security MCP servers stop at static analysis. Arcis adds the runtime layer the scanners miss: it screens text headed for an LLM for prompt-injection and jailbreak signatures, and probes a live endpoint to confirm it actually blocks real attacks, alongside code audit and supply-chain checks. Four tools, no cloud round trip.
+
+This is the same thesis as the Arcis SDKs: a WAF guesses at the edge, Arcis defends from inside the app. The MCP server brings that to the agent, so the model can both write the code and verify the running app stops the attacks it cares about.
 
 ## Tools
 

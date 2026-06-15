@@ -23,6 +23,7 @@ mod console;
 mod sca;
 mod scan;
 mod stub;
+mod telemetry;
 mod welcome;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -79,6 +80,10 @@ fn main() -> ExitCode {
     // which is rare but worth surfacing as a non-zero exit so wrapper
     // scripts can detect it.
     if argv.len() < 2 {
+        // Anonymous, opt-out (see telemetry.rs). Records that the CLI was run
+        // with no subcommand; the welcome/console/catalog choice below is a
+        // display detail we don't distinguish here.
+        telemetry::record("start");
         let stdout_is_tty = std::io::stdout().is_terminal();
         let stdin_is_tty = std::io::stdin().is_terminal();
         let in_ci = std::env::var("CI").is_ok();
@@ -140,9 +145,18 @@ fn main() -> ExitCode {
 
         // Phase B1 / B2 / B3: sca, audit, scan are ported. Only `update`
         // still falls through to the Python CLI stub.
-        "sca" => sca::run(&argv[2..]),
-        "audit" => audit::run(&argv[2..]),
-        "scan" => scan::run(&argv[2..]),
+        "sca" => {
+            telemetry::record("sca");
+            sca::run(&argv[2..])
+        }
+        "audit" => {
+            telemetry::record("audit");
+            audit::run(&argv[2..])
+        }
+        "scan" => {
+            telemetry::record("scan");
+            scan::run(&argv[2..])
+        }
         "update" => stub::dispatch(&argv[1..]),
 
         // Unknown command. Match Python's error style + exit 1. Python

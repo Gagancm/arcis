@@ -275,7 +275,7 @@ export function createServer(): Server {
   const server = new Server(
     {
       name: 'arcis-mcp',
-      version: '1.5.0',
+      version: '1.6.1',
     },
     {
       capabilities: {
