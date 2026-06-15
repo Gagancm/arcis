@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.getarcis/arcis",
+  "description": "Runtime application security for AI coding agents. Screen prompts and inputs for injection, probe a running endpoint for live attack bypasses, audit code, and check dependencies.",
+  "repository": {
+    "url": "https://github.com/getarcis/arcis",
+    "source": "github",
+    "subfolder": "packages/arcis-mcp"
+  },
+  "version": "1.6.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@arcis/mcp",
+      "version": "1.6.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

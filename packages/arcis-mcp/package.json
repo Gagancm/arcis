@@ -1,7 +1,7 @@
 {
   "name": "@arcis/mcp",
   "version": "1.6.1",
-  "description": "Arcis MCP server. Exposes Arcis CLI scanners (audit / scan / sca) and the prompt-injection detector as tools that Cursor and any other MCP-aware AI agent can call. One install, four tools, zero cloud round trip.",
+  "description": "Runtime application security for AI coding agents, as an MCP server. Lets Cursor and any MCP-aware client screen prompts and inputs for injection, probe a running endpoint for live attack bypasses, and check code and dependencies. Four tools, stdio, no cloud round trip.",
   "main": "dist/server.js",
   "bin": {
     "arcis-mcp": "dist/server.js"
@@ -22,10 +22,14 @@
     "model-context-protocol",
     "arcis",
     "security",
+    "runtime-security",
+    "application-security",
+    "ai-security",
+    "llm-security",
+    "agent-security",
+    "prompt-injection",
     "cursor",
-    "ai-agent",
-    "tool",
-    "prompt-injection"
+    "ai-agent"
   ],
   "author": "Gagan CM",
   "license": "MIT",
