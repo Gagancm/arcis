@@ -696,7 +696,7 @@ pub fn build_pnpm(path: &Path) -> Option<DepGraph> {
     // since v9's `packages` map has the same key shape minus the `/`).
     if let Some(pkgs) = val.get("packages").and_then(|v| v.as_mapping()) {
         for (k, _) in pkgs {
-            let Some(key) = k.as_str() else { continue };
+            let key = k.as_str();
             let trimmed = key.strip_prefix('/').unwrap_or(key);
             if let Some((name, version)) = parse_pnpm_pkg_key(trimmed) {
                 graph.add_node("npm", &name, &version);
@@ -713,7 +713,7 @@ pub fn build_pnpm(path: &Path) -> Option<DepGraph> {
                     continue;
                 };
                 for (k, v) in deps {
-                    let Some(name) = k.as_str() else { continue };
+                    let name = k.as_str();
                     let version = v.get("version").and_then(|x| x.as_str()).unwrap_or("");
                     if version.is_empty() {
                         continue;
@@ -735,7 +735,7 @@ pub fn build_pnpm(path: &Path) -> Option<DepGraph> {
         .and_then(|v| v.as_mapping());
     if let Some(map) = edge_source {
         for (k, v) in map {
-            let Some(key) = k.as_str() else { continue };
+            let key = k.as_str();
             let trimmed = key.strip_prefix('/').unwrap_or(key);
             let Some((parent_name, parent_version)) = parse_pnpm_pkg_key(trimmed) else {
                 continue;
@@ -748,9 +748,7 @@ pub fn build_pnpm(path: &Path) -> Option<DepGraph> {
                 continue;
             };
             for (dk, dv) in deps {
-                let Some(dep_name) = dk.as_str() else {
-                    continue;
-                };
+                let dep_name = dk.as_str();
                 let Some(dep_version) = dv.as_str() else {
                     continue;
                 };
