@@ -59,6 +59,9 @@ export interface BotProtectionOptions {
   detectBehavior?: boolean;
   /** Custom handler called on detection (instead of default deny response) */
   onDetected?: (req: Request, res: Response, result: BotDetectionResult) => void;
+
+  /** Evaluate deny rules but continue the request and report would_deny. */
+  dryRun?: boolean;
 }
 
 // =============================================================================
@@ -322,6 +325,7 @@ export function botProtection(options: BotProtectionOptions = {}): RequestHandle
     statusCode = 403,
     message = 'Access denied.',
     onDetected,
+    dryRun = false,
   } = options;
 
   const allowSet = new Set(allow);
@@ -350,8 +354,9 @@ export function botProtection(options: BotProtectionOptions = {}): RequestHandle
         rule: `bot/${result.category.toLowerCase()}`,
         severity: 'medium',
         reason: result.name ? `Bot detected: ${result.name}` : 'Bot detected',
-        decision: 'deny',
+        decision: dryRun ? 'would_deny' : 'deny',
       };
+      if (dryRun) return next();
       if (onDetected) {
         return onDetected(req, res, result);
       }
@@ -366,8 +371,9 @@ export function botProtection(options: BotProtectionOptions = {}): RequestHandle
         rule: 'bot/uncategorized',
         severity: 'medium',
         reason: 'Uncategorized bot under defaultAction=deny',
-        decision: 'deny',
+        decision: dryRun ? 'would_deny' : 'deny',
       };
+      if (dryRun) return next();
       if (onDetected) {
         return onDetected(req, res, result);
       }

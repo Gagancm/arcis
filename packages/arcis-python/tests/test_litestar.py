@@ -206,6 +206,23 @@ async def test_rate_limit_isolates_per_ip():
 
 
 @pytest.mark.asyncio
+async def test_dry_run_does_not_enforce_rate_limit():
+    middleware = ArcisMiddleware(
+        lambda *a, **k: None,
+        dry_run=True,
+        rate_limit=True,
+        rate_limit_max=1,
+        rate_limit_window_ms=60_000,
+        headers=False,
+    )
+
+    sent1, _ = await _drive(middleware, _build_scope(client_ip="192.0.2.60"))
+    sent2, _ = await _drive(middleware, _build_scope(client_ip="192.0.2.60"))
+    assert any(m.get("status") == 200 for m in sent1)
+    assert any(m.get("status") == 200 for m in sent2)
+
+
+@pytest.mark.asyncio
 async def test_xff_leftmost_wins_for_rate_limit_key():
     """
     Header-stripping edge proxies must not be able to escape rate
@@ -312,6 +329,25 @@ async def test_block_mode_rejects_invalid_json_body_with_400():
     assert start["status"] == 400
 
 
+@pytest.mark.asyncio
+async def test_dry_run_passes_invalid_json_to_inner_app():
+    middleware = ArcisMiddleware(
+        lambda *a, **k: None,
+        block=True,
+        dry_run=True,
+        rate_limit=False,
+        headers=False,
+    )
+    sent, received = await _drive(
+        middleware,
+        _build_scope(),
+        body=b"{not json",
+    )
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    assert start["status"] == 200
+    assert received[0]["body"] == b"{not json"
+
+
 # ─── Sanitisation rewrite ──────────────────────────────────────────────────
 
 
@@ -374,6 +410,79 @@ async def test_sanitiser_updates_content_length_for_inner_app():
     # header must reflect the new size or downstream parsers will
     # over- / under-read.
     assert int(cl) != len(dirty)
+
+
+@pytest.mark.asyncio
+async def test_dry_run_preserves_request_body_bytes():
+    captured: List[bytes] = []
+
+    async def inner(scope, receive, send):
+        msg = await receive()
+        captured.append(msg.get("body") or b"")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = ArcisMiddleware(
+        inner,
+        sanitize=True,
+        block=True,
+        dry_run=True,
+        rate_limit=False,
+        headers=False,
+    )
+    original = json.dumps(
+        {
+            "note": "Use the -- flag; it works",
+            "path": "docs/../README.md",
+        }
+    ).encode()
+
+    await _drive(middleware, _build_scope(), body=original, inner=inner)
+
+    assert captured == [original]
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reports_would_deny_without_rewriting_body():
+    captured: List[bytes] = []
+    events: List[Dict[str, Any]] = []
+
+    async def inner(scope, receive, send):
+        msg = await receive()
+        captured.append(msg.get("body") or b"")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = ArcisMiddleware(
+        inner,
+        sanitize=True,
+        block=True,
+        dry_run=True,
+        on_sanitize=events.append,
+        rate_limit=False,
+        headers=False,
+    )
+    original = json.dumps({"comment": "<script>alert(1)</script>"}).encode()
+
+    sent, _ = await _drive(middleware, _build_scope(), body=original, inner=inner)
+
+    assert any(message.get("status") == 200 for message in sent)
+    assert captured == [original]
+    assert len(events) == 1
+    assert events[0]["decision"] == "would_deny"
+    assert events[0]["vector"] == "xss"
 
 
 # ─── Bot detection ─────────────────────────────────────────────────────────

@@ -813,9 +813,90 @@
             "severity": "high",
             "status": 400
           }
+        },
+        {
+          "name": "dry_run_xss_is_observed_without_mutation",
+          "config": {
+            "rateLimit": false,
+            "block": true,
+            "dryRun": true
+          },
+          "request": {
+            "method": "POST",
+            "path": "/observe",
+            "body": {
+              "comment": "<script>alert(1)</script>"
+            }
+          },
+          "expected_request_unchanged": true,
+          "expected_event": {
+            "decision": "would_deny",
+            "vector": "xss",
+            "severity": "high",
+            "status": 200
+          }
         }
       ]
     }
+  },
+  "dry_run_input_preservation": {
+    "description": "Shared production-shaped inputs that every full-pipeline SDK must deliver to the application unchanged while dry-run is active. body_raw is UTF-8 JSON and must remain byte-for-byte identical; parsed values, query values, path parameters, request headers, and cookies must remain value-equal.",
+    "cases": [
+      {
+        "name": "invoice_line_items_and_vendor_note",
+        "request": {
+          "path_param": "martignetti-01",
+          "query": {
+            "search": "O'Connor & Sons",
+            "size": "1.75 L"
+          },
+          "headers": {
+            "x-arcis-fixture": "Martignetti / PO #A-19"
+          },
+          "cookies": {
+            "arcis_note": "invoice=418&aisle=4"
+          },
+          "body_raw": "{\"invoiceNumber\":\"INV-2026-000418\",\"vendor\":\"Martignetti Companies\",\"lineItems\":[{\"sku\":\"WOODFORD-1.75L\",\"name\":\"Woodford Reserve Kentucky Straight Bourbon 1.75L\",\"quantity\":12,\"unitPrice\":\"52.40\"}],\"note\":\"Customer's PO #A-19; deliver after 3:30 p.m.\"}"
+        },
+        "expected_request_unchanged": true
+      },
+      {
+        "name": "unicode_product_catalog",
+        "request": {
+          "path_param": "crème-brûlée",
+          "query": {
+            "label": "édition limitée",
+            "category": "single malt"
+          },
+          "headers": {
+            "x-arcis-fixture": "catalog / limited-release"
+          },
+          "cookies": {
+            "arcis_note": "catalog=summer-2026"
+          },
+          "body_raw": "{\"sku\":\"LAGAVULIN-16-750ML\",\"name\":\"Crème brûlée – édition limitée\",\"description\":\"Smoky, rich & dry; 43% ABV (gift-boxed).\",\"tags\":[\"single malt\",\"limited-release\",\"$invoice total\"]}"
+        },
+        "expected_request_unchanged": true
+      },
+      {
+        "name": "url_punctuation_and_free_text",
+        "request": {
+          "path_param": "notes-2026-08",
+          "query": {
+            "redirect": "https://example.com/catalog/item?id=42&size=750ml#details",
+            "contact": "José O'Connor"
+          },
+          "headers": {
+            "x-arcis-fixture": "notes; revision=3"
+          },
+          "cookies": {
+            "arcis_note": "draft=true&owner=jose"
+          },
+          "body_raw": "{\"website\":\"https://example.com/catalog/item?id=42&size=750ml#details\",\"notes\":\"Use the -- flag; docs/../README.md isn't an attack in this note.\",\"contact\":\"José O'Connor <jose@example.com>\"}"
+        },
+        "expected_request_unchanged": true
+      }
+    ]
   },
   "detect_parity": {
     "description": "Cross-SDK detection-function parity. Each payload must classify under the listed vector when fed through detect_xss / detect_sql / detect_path_traversal / detect_command_injection / detect_nosql / detect_prototype_pollution / detect_ssti / detect_xxe in every SDK. Catches divergence between Node hardcoded patterns and Python's patterns.json source. Negative cases (clean inputs, sink-context strings) ensure each detector stays narrow.",

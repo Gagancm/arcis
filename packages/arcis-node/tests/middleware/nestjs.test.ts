@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Request, Response } from 'express';
+import type { RateLimitStore } from '../../src/core/types';
 import {
   ArcisGuard,
   ArcisMiddleware,
@@ -234,6 +235,52 @@ describe('ArcisGuard (NestJS CanActivate adapter)', () => {
     const result = await guard.canActivate(execContext(req, res));
     expect(result).toBe(false);
     expect(res.status).toHaveBeenCalledWith(403);
+    guard.close();
+  });
+
+  it('completes when an async external rate-limit store returns 429', async () => {
+    let count = 0;
+    const resetTime = Date.now() + 60_000;
+    const store: RateLimitStore = {
+      get: async () => count === 0 ? null : { count, resetTime },
+      set: async (_key, entry) => { count = entry.count; },
+      increment: async () => { count += 1; return count; },
+    };
+    const guard = new ArcisGuard({
+      sanitize: false,
+      bot: false,
+      scannerPaths: false,
+      forwardedHeaders: false,
+      graphql: false,
+      massAssign: false,
+      ssrf: false,
+      promptInjection: false,
+      rateLimit: { max: 1, windowMs: 60_000, store },
+    });
+    const req = mockRequest({ ip: '203.0.113.7' });
+    const res = mockResponse() as unknown as Response & { headersSent: boolean };
+    Object.defineProperty(res, 'headersSent', {
+      get(): boolean {
+        return (this as { _written?: boolean })._written === true;
+      },
+      configurable: true,
+    });
+    (res.status as unknown as ReturnType<typeof vi.fn>).mockImplementation(function (
+      this: Response & { _written: boolean },
+      code: number,
+    ) {
+      if (code === 429) this._written = true;
+      return this;
+    });
+
+    expect(await guard.canActivate(execContext(req, res))).toBe(true);
+    const blocked = await Promise.race([
+      guard.canActivate(execContext(req, res)),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 250)),
+    ]);
+
+    expect(blocked).toBe(false);
+    expect(res.status).toHaveBeenCalledWith(429);
     guard.close();
   });
 

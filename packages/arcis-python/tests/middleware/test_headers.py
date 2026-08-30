@@ -92,3 +92,31 @@ class TestSecurityHeaders:
         h = headers.get_headers()
 
         assert h["Content-Security-Policy"] == custom_csp
+
+    def test_configurable_default_headers_can_be_disabled(self):
+        """False and empty options must remove pre-populated defaults."""
+        headers = SecurityHeaders(
+            content_security_policy="",
+            x_frame_options="",
+            x_content_type_options="",
+            xss_filter=False,
+            hsts=False,
+            referrer_policy="",
+            permissions_policy="",
+            cache_control=False,
+        )
+        h = headers.get_headers()
+
+        absent = {
+            "Content-Security-Policy",
+            "X-Frame-Options",
+            "X-Content-Type-Options",
+            "X-XSS-Protection",
+            "Strict-Transport-Security",
+            "Referrer-Policy",
+            "Permissions-Policy",
+            "Cache-Control",
+            "Pragma",
+            "Expires",
+        }
+        assert absent.isdisjoint(h)

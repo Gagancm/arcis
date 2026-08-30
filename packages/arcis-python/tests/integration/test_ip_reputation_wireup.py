@@ -149,3 +149,39 @@ def test_dry_run_never_blocks(stub_verdicts):
     client.get("/", headers=_headers(PUBLIC_IP))  # warm
     time.sleep(0.1)
     assert not _poll_until_status(client, PUBLIC_IP, 403, tries=6)
+
+
+def test_dry_run_records_cached_bad_ip_as_would_deny(stub_verdicts):
+    from arcis.telemetry.client import AsyncTelemetryClient
+    from arcis.telemetry.types import TelemetryOptions
+
+    captured = []
+
+    class _Capture(AsyncTelemetryClient):
+        def record(self, event):  # type: ignore[override]
+            captured.append(event)
+
+    stub_verdicts["verdicts"][PUBLIC_IP] = {"severity": 10}
+    telemetry = _Capture(TelemetryOptions(endpoint="http://localhost:9999/v1/events"))
+    client = _make_app(
+        dry_run=True,
+        telemetry=telemetry,
+        intelligence={
+            "endpoint": "https://intel.test",
+            "cloud_decisions": ["ip-rep"],
+            "block_threshold": 1,
+        },
+    )
+
+    for _ in range(20):
+        response = client.get("/", headers=_headers(PUBLIC_IP))
+        assert response.status_code == 200
+        if any(event.vector == "ip-reputation" for event in captured):
+            break
+        time.sleep(0.02)
+
+    event = next((event for event in captured if event.vector == "ip-reputation"), None)
+    assert event is not None
+    assert event.decision == "would_deny"
+    assert event.rule == "ip-reputation/known-bad"
+    assert event.status == 200

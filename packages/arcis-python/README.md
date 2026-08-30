@@ -123,14 +123,33 @@ from dotenv import load_dotenv
 
 load_dotenv()
 app = FastAPI()
-# block=True returns 403 on detected attacks. Default is False
-# (sanitize + observe) so existing apps don't break on rollout.
+# block=True returns 403 on detected attacks. It defaults to False.
+# Use dry_run for a non-mutating, non-blocking production rollout.
 app.add_middleware(ArcisMiddleware, block=True)
 
 @app.get('/')
 async def hello():
     return {'message': 'Hello, World!'}
 ```
+
+### Safe dry-run rollout
+
+```python
+app.add_middleware(
+    ArcisMiddleware,
+    block=True,
+    dry_run=True,
+    telemetry={"endpoint": "https://security.example.com/v1/events"},
+)
+```
+
+`dry_run=True` takes precedence over block, reject, and transform behavior in
+the Arcis middleware. Configured detectors and rate limits continue evaluating,
+but Arcis does not return an Arcis `403` or `429` and does not rewrite request
+body bytes, parsed values, query values, path parameters, headers, or cookies.
+A request that would have been rejected is emitted as telemetry decision
+`would_deny` with the application's response status. Response security headers
+may still be added.
 
 ### Django
 

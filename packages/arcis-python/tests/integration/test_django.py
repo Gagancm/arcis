@@ -143,6 +143,50 @@ class TestArcisMiddleware:
         assert sanitized is not None
         assert '<script>' not in sanitized['name']
 
+    def test_dry_run_preserves_body_bytes_and_reports_would_deny(self, rf, simple_view):
+        events = []
+        original = json.dumps({"name": "<script>alert(1)</script>"}).encode("utf-8")
+
+        with override_settings(ARCIS_CONFIG={
+            'block': True,
+            'dry_run': True,
+            'rate_limit': False,
+            'headers': False,
+            'error_handler': False,
+            'on_sanitize': events.append,
+        }):
+            middleware = ArcisMiddleware(simple_view)
+            request = rf.post('/', data=original, content_type='application/json')
+            response = middleware(request)
+
+        assert response.status_code == 200
+        assert request.body == original
+        assert not hasattr(request, '_arcis_sanitized_body')
+        assert len(events) == 1
+        assert events[0]['decision'] == 'would_deny'
+        assert events[0]['vector'] == 'xss'
+
+    def test_dry_run_passes_malformed_json_bytes_to_view(self, rf):
+        original = b'{"invoice": "unterminated"'
+
+        def raw_view(request):
+            from django.http import HttpResponse
+            return HttpResponse(request.body, content_type='application/octet-stream')
+
+        with override_settings(ARCIS_CONFIG={
+            'block': True,
+            'dry_run': True,
+            'rate_limit': False,
+            'headers': False,
+            'error_handler': False,
+        }):
+            middleware = ArcisMiddleware(raw_view)
+            request = rf.post('/', data=original, content_type='application/json')
+            response = middleware(request)
+
+        assert response.status_code == 200
+        assert response.content == original
+
 
 class TestArcisMiddlewareRateLimiting:
     """Test rate limiting in Arcis middleware."""
@@ -175,6 +219,46 @@ class TestArcisMiddlewareRateLimiting:
         assert response.status_code == 429
         data = json.loads(response.content)
         assert 'error' in data
+
+    @override_settings(ARCIS_CONFIG={
+        'rate_limit_max': 1,
+        'rate_limit_window_ms': 60000,
+        'dry_run': True,
+    })
+    def test_dry_run_does_not_enforce_rate_limit(self, rf, simple_view):
+        middleware = ArcisMiddleware(simple_view)
+
+        for _ in range(2):
+            request = rf.get('/')
+            request.META['REMOTE_ADDR'] = '192.0.2.50'
+            response = middleware(request)
+            assert response.status_code == 200
+
+    def test_dry_run_reports_rate_limit_as_would_deny(self, rf, simple_view):
+        events = []
+        with override_settings(ARCIS_CONFIG={
+            'rate_limit_max': 1,
+            'rate_limit_window_ms': 60000,
+            'dry_run': True,
+            'sanitize': False,
+            'headers': False,
+            'on_sanitize': events.append,
+        }):
+            middleware = ArcisMiddleware(simple_view)
+            for _ in range(2):
+                request = rf.get('/')
+                request.META['REMOTE_ADDR'] = '192.0.2.51'
+                response = middleware(request)
+                assert response.status_code == 200
+
+        assert events == [{
+            'vector': 'rate-limit',
+            'rule': 'rate-limit/exceeded',
+            'matched': '',
+            'path': '/',
+            'dry_run': True,
+            'decision': 'would_deny',
+        }]
     
     @override_settings(ARCIS_CONFIG={'rate_limit_max': 2, 'rate_limit_window_ms': 60000})
     def test_different_ips_have_separate_limits(self, rf, simple_view):

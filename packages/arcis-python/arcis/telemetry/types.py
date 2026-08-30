@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal, Optional
 
 
-TelemetryDecision = Literal["allow", "deny", "challenge"]
+TelemetryDecision = Literal["allow", "deny", "challenge", "would_deny"]
 TelemetrySeverity = Literal["critical", "high", "medium", "low"]
 
 

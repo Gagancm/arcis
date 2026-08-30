@@ -39,9 +39,16 @@ class SecurityHeaders:
         dns_prefetch_control: bool = True,
         custom_headers: Optional[Dict[str, str]] = None,
     ):
-        self.headers = dict(self.DEFAULT_HEADERS)
+        # Resolve every configurable header from the supplied options. Starting
+        # with DEFAULT_HEADERS made false or empty options ineffective because
+        # the pre-populated value remained in the map.
+        self.headers: Dict[str, str] = {}
 
-        if content_security_policy:
+        if content_security_policy is None:
+            default_csp = self.DEFAULT_HEADERS.get("Content-Security-Policy")
+            if default_csp:
+                self.headers["Content-Security-Policy"] = default_csp
+        elif content_security_policy:
             self.headers["Content-Security-Policy"] = content_security_policy
 
         if x_frame_options:

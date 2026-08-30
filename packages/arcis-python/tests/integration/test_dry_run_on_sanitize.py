@@ -8,7 +8,7 @@ Covers:
 - Callback exceptions are swallowed (don't crash the middleware)
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from starlette.testclient import TestClient
 
 from arcis.fastapi import ArcisMiddleware
@@ -61,14 +61,56 @@ class TestDryRunMode:
         assert r.status_code == 200
 
     def test_dry_run_without_block_is_no_op(self):
-        # block=False means no scan happens; dry_run has nothing to skip.
+        original = {"q": "<script>alert(1)</script>"}
         client = _build_app(
             block=False, dry_run=True, rate_limit=False, headers=False
         )
-        r = client.post("/echo", json={"q": "<script>alert(1)</script>"})
-        # Sanitizer still runs by default — body gets cleaned and handler
-        # sees the sanitized value. Status is always 200 here.
+        r = client.post("/echo", json=original)
         assert r.status_code == 200
+        assert r.json()["received"] == original
+
+    def test_dry_run_does_not_attach_transformed_body(self):
+        app = FastAPI()
+        app.add_middleware(
+            ArcisMiddleware,
+            block=True,
+            dry_run=True,
+            rate_limit=False,
+            headers=False,
+        )
+
+        @app.post("/state")
+        async def state(request: Request):
+            payload = await request.json()
+            return {
+                "received": payload,
+                "has_sanitized_body": hasattr(request.state, "sanitized_body"),
+            }
+
+        client = TestClient(app)
+        original = {
+            "note": "Use the -- flag; it works",
+            "path": "docs/../README.md",
+        }
+        response = client.post("/state", json=original)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "received": original,
+            "has_sanitized_body": False,
+        }
+
+    def test_dry_run_does_not_enforce_rate_limit(self):
+        client = _build_app(
+            dry_run=True,
+            rate_limit=True,
+            rate_limit_max=1,
+            rate_limit_window_ms=60_000,
+            headers=False,
+        )
+
+        assert client.post("/echo", json={"q": "first"}).status_code == 200
+        assert client.post("/echo", json={"q": "second"}).status_code == 200
 
 
 class TestOnSanitizeCallback:

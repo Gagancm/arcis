@@ -152,12 +152,30 @@ class ArcisMiddleware(MiddlewareMixin):
             try:
                 rate_limit_info = self.rate_limiter.check(request)
             except RateLimitExceeded as e:
-                response = JsonResponse(
-                    {'error': e.message, 'retry_after': e.retry_after},
-                    status=429
-                )
-                response['Retry-After'] = str(e.retry_after)
-                return response
+                if self.dry_run:
+                    if self.on_sanitize is not None:
+                        try:
+                            self.on_sanitize({
+                                'vector': 'rate-limit',
+                                'rule': 'rate-limit/exceeded',
+                                'matched': '',
+                                'path': request.path or '',
+                                'dry_run': True,
+                                'decision': 'would_deny',
+                            })
+                        except Exception:
+                            logger.exception('on_sanitize callback raised')
+                    logger.info(
+                        'arcis dry-run: would rate limit path=%s',
+                        request.path or '',
+                    )
+                else:
+                    response = JsonResponse(
+                        {'error': e.message, 'retry_after': e.retry_after},
+                        status=429
+                    )
+                    response['Retry-After'] = str(e.retry_after)
+                    return response
         
         # Read JSON body once. Used by both block-mode scan and sanitizer.
         body_obj: Any = None
@@ -193,6 +211,7 @@ class ArcisMiddleware(MiddlewareMixin):
                             'matched': matched,
                             'path': request.path or '',
                             'dry_run': self.dry_run,
+                            'decision': 'would_deny' if self.dry_run else 'deny',
                         })
                     except Exception:
                         logger.exception('on_sanitize callback raised')
@@ -212,7 +231,7 @@ class ArcisMiddleware(MiddlewareMixin):
                     )
 
         # Sanitize request body
-        if self.sanitizer and body_read and body_obj is not None:
+        if self.sanitizer and not self.dry_run and body_read and body_obj is not None:
             try:
                 request._arcis_sanitized_body = self.sanitizer(body_obj)
                 # Also accessible as request.arcis_json
@@ -331,6 +350,7 @@ class ArcisRateLimitMiddleware(MiddlewareMixin):
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
         config = getattr(settings, 'ARCIS_CONFIG', {})
+        self.dry_run = config.get('dry_run', False)
 
         if ArcisRateLimitMiddleware._rate_limiter is None:
             ArcisRateLimitMiddleware._rate_limiter = RateLimiter(
@@ -345,6 +365,12 @@ class ArcisRateLimitMiddleware(MiddlewareMixin):
         try:
             rate_limit_info = self.rate_limiter.check(request)
         except RateLimitExceeded as e:
+            if self.dry_run:
+                logger.info(
+                    'arcis dry-run: would rate limit path=%s',
+                    request.path or '',
+                )
+                return self.get_response(request)
             response = JsonResponse(
                 {'error': e.message, 'retry_after': e.retry_after},
                 status=429

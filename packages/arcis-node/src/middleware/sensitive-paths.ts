@@ -26,6 +26,8 @@ export interface ScannerPathsOptions {
    * list use `[...SENSITIVE_PATH_PATTERNS, /your-extra/]`.
    */
   patterns?: RegExp[];
+  /** Evaluate matching paths but continue and report would_deny. */
+  dryRun?: boolean;
 }
 
 /**
@@ -101,7 +103,7 @@ export function detectSensitivePath(
 export function scannerPathProtection(
   options: ScannerPathsOptions = {},
 ): RequestHandler {
-  const { statusCode = 403, message = 'Access denied.' } = options;
+  const { statusCode = 403, message = 'Access denied.', dryRun = false } = options;
   const patterns = options.patterns ?? SENSITIVE_PATH_PATTERNS;
 
   return (req: Request, res: Response, next: NextFunction) => {
@@ -110,6 +112,15 @@ export function scannerPathProtection(
       return next();
     }
     (req as unknown as Record<string, unknown>).scannerPathHit = matched;
+    req.__arcis = {
+      vector: 'scanner-path',
+      rule: 'scanner-path/sensitive',
+      severity: 'medium',
+      matchedPattern: matched,
+      reason: 'Sensitive scanner path detected',
+      decision: dryRun ? 'would_deny' : 'deny',
+    };
+    if (dryRun) return next();
     res.status(statusCode).json({
       error: message,
       code: 'SECURITY_THREAT',

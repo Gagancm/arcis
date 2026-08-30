@@ -142,7 +142,8 @@ function buildTelemetryFromEnv(): TelemetryOptions | undefined {
  * buggy observer can't take down the request path.
  */
 function createSanitizeObserver(
-  onSanitize: (event: SanitizeEvent) => void,
+  onSanitize?: (event: SanitizeEvent) => void,
+  markWouldDeny = false,
 ): RequestHandler {
   return (req: Request, _res: Response, next: NextFunction) => {
     const fields: ReadonlyArray<readonly [string, unknown]> = [
@@ -154,15 +155,27 @@ function createSanitizeObserver(
     for (const [name, value] of fields) {
       const hit = scanThreats(value);
       if (!hit) continue;
-      try {
-        onSanitize({
-          type: hit.vector,
-          field: name,
-          original: hit.matchedPattern,
-          pattern: hit.matchedPattern,
-        });
-      } catch {
-        // Observer must never break the response — fail-open.
+      if (markWouldDeny) {
+        req.__arcis = {
+          vector: hit.vector,
+          rule: `${hit.vector}/match`,
+          severity: 'high',
+          matchedPattern: hit.matchedPattern,
+          reason: `Detected ${hit.vector} pattern`,
+          decision: 'would_deny',
+        };
+      }
+      if (onSanitize) {
+        try {
+          onSanitize({
+            type: hit.vector,
+            field: name,
+            original: hit.matchedPattern,
+            pattern: hit.matchedPattern,
+          });
+        } catch {
+          // Observer must never break the response. Fail open.
+        }
       }
     }
     next();
@@ -203,6 +216,13 @@ function suppressRateLimit429(handler: RequestHandler): RequestHandler {
     res.status = ((code: number): Response => {
       if (code === 429) {
         suppressed = true;
+        req.__arcis = {
+          vector: 'rate-limit',
+          rule: 'rate-limit/exceeded',
+          severity: 'medium',
+          reason: 'Rate limit would have been exceeded in dry-run mode',
+          decision: 'would_deny',
+        };
         return res; // chainable; the .json below no-ops.
       }
       return originalStatus(code);
@@ -267,19 +287,20 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
 
   // Scanner-path probe blocking (v1.7 W2). Runs BEFORE bot detection because
   // some scanner UAs forge a browser UA but still hit dotfile / WordPress
-  // probe paths. Dry-run skips the block.
-  if (options.scannerPaths !== false && !dryRun) {
-    const scannerOpts: ScannerPathsOptions = typeof options.scannerPaths === 'object'
+  // probe paths. Dry-run evaluates matches without writing a response.
+  if (options.scannerPaths !== false) {
+    const userScannerOpts: ScannerPathsOptions = typeof options.scannerPaths === 'object'
       ? options.scannerPaths
       : {};
-    middlewares.push(scannerPathProtection(scannerOpts));
+    middlewares.push(scannerPathProtection({ ...userScannerOpts, dryRun }));
   }
 
   // Forwarded-header inspection (v1.7 W7). Flags a loopback address in a
   // forwarded / client-IP header (spoofing to bypass IP allowlists), and
   // optionally rejects Host / X-Forwarded-Host not in a trustedHosts
-  // allowlist. Runs early (header read, no body needed). Skipped in dry-run.
-  if (options.forwardedHeaders !== false && !dryRun) {
+  // allowlist. Runs early because it only reads headers. Dry-run records the
+  // same finding without writing a response or changing request headers.
+  if (options.forwardedHeaders !== false) {
     const FORWARDED = ['x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'forwarded', 'client-ip', 'true-client-ip'];
     const LOOPBACK = /(?:^|[\s,@=])(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|0\.0\.0\.0|localhost)(?::\d+)?(?:$|[\s,;])/i;
     const trustedHosts = typeof options.forwardedHeaders === 'object' && options.forwardedHeaders.trustedHosts
@@ -290,6 +311,14 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
         const raw = req.headers[name];
         const value = Array.isArray(raw) ? raw.join(',') : raw;
         if (typeof value === 'string' && LOOPBACK.test(value)) {
+          req.__arcis = {
+            vector: 'header',
+            rule: 'header/forwarded-loopback-spoof',
+            severity: 'high',
+            reason: `Loopback address detected in ${name}`,
+            decision: dryRun ? 'would_deny' : 'deny',
+          };
+          if (dryRun) return next();
           res.status(403).json({
             error: 'Request blocked for security reasons',
             code: 'SECURITY_THREAT',
@@ -306,6 +335,14 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
           if (typeof value === 'string' && value) {
             const host = value.split(':')[0].toLowerCase();
             if (!trustedHosts.includes(host)) {
+              req.__arcis = {
+                vector: 'header',
+                rule: 'header/untrusted-host',
+                severity: 'high',
+                reason: `Untrusted host detected in ${name}`,
+                decision: dryRun ? 'would_deny' : 'deny',
+              };
+              if (dryRun) return next();
               res.status(403).json({
                 error: 'Request blocked for security reasons',
                 code: 'SECURITY_THREAT',
@@ -360,19 +397,19 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
         const ip = detectClientIp(req);
         const rep = intelClient.check(ip);
         req.arcisIpReputation = rep;
-        const shouldBlock =
-          !dryRun &&
+        const wouldBlock =
           rep.found &&
           typeof blockThreshold === 'number' &&
           (rep.severity ?? 0) >= blockThreshold;
-        if (shouldBlock) {
+        if (wouldBlock) {
           req.__arcis = {
             vector: 'ip-reputation',
             rule: 'ip-reputation/known-bad',
             severity: reputationSeverityTier(rep.severity),
             reason: `IP reputation severity ${rep.severity} >= ${blockThreshold}`,
-            decision: 'deny',
+            decision: dryRun ? 'would_deny' : 'deny',
           };
+          if (dryRun) return next();
           res.status(403).json({
             error: 'Request blocked for security reasons',
             code: 'SECURITY_THREAT',
@@ -411,26 +448,23 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
       message: userBotOpts.message,
       detectBehavior: userBotOpts.detectBehavior,
       onDetected: userBotOpts.onDetected,
+      dryRun,
     };
-    if (dryRun) {
-      // Dry-run: classify + attach to req for observation, but never deny.
-      const classifyOnly: BotProtectionOptions = {
-        ...botOpts,
-        deny: [],
-        defaultAction: 'allow',
-      };
-      middlewares.push(botProtection(classifyOnly));
-    } else {
-      middlewares.push(botProtection(botOpts));
-    }
+    middlewares.push(botProtection(botOpts));
   }
 
   // Issue #47 — observer pre-scan. Sits BEFORE the rate-limit + sanitizer so
   // the callback fires on every request that contains a threat, not just
   // those that survive rate-limiting. Skipped when no callback is set so
   // the default zero-overhead path is preserved.
-  if (options.onSanitize) {
-    middlewares.push(createSanitizeObserver(options.onSanitize));
+  const sanitizeWouldReject = options.block === true || (
+    typeof options.sanitize === 'object' && options.sanitize.mode === 'reject'
+  );
+  if (options.onSanitize || (dryRun && options.sanitize !== false)) {
+    middlewares.push(createSanitizeObserver(
+      options.onSanitize,
+      dryRun && sanitizeWouldReject,
+    ));
   }
 
   // Rate limiting — emitter detects 429 from response status, no wrap needed.
@@ -449,9 +483,9 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
   // GraphQL inspection (v1.7 W3). When the JSON body has a `query`
   // field, treat it as a GraphQL document and run the inspector. Sits
   // between rate-limit and sanitizer so the depth/alias-bomb check
-  // happens BEFORE the regex-heavy body sanitizer chews on it. Skipped
-  // in dry-run mode.
-  if (options.graphql !== false && !dryRun) {
+  // happens BEFORE the regex-heavy body sanitizer chews on it. Dry-run keeps
+  // the parsed body unchanged and records the decision without responding.
+  if (options.graphql !== false) {
     const userGqlOpts: GraphqlGuardOptions = typeof options.graphql === 'object'
       ? options.graphql
       : {};
@@ -476,6 +510,14 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
       if (!result.blocked) {
         return next();
       }
+      req.__arcis = {
+        vector: 'graphql',
+        rule: `graphql/${result.reason}`,
+        severity: 'high',
+        reason: result.reason,
+        decision: dryRun ? 'would_deny' : 'deny',
+      };
+      if (dryRun) return next();
       res.status(403).json({
         error: 'Request blocked for security reasons',
         code: 'SECURITY_THREAT',
@@ -487,9 +529,9 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
 
   // Mass-assignment field detection (v1.7 W4). Scan the JSON body for
   // privilege-escalation field names. Runs after GraphQL (cheap key walk
-  // vs the GraphQL string parse) and before the sanitizer. Skipped in
-  // dry-run.
-  if (options.massAssign !== false && !dryRun) {
+  // vs the GraphQL string parse) and before the sanitizer. Dry-run records
+  // the finding but never removes or rewrites the fields.
+  if (options.massAssign !== false) {
     const massAssignOpts: MassAssignDetectOptions = typeof options.massAssign === 'object'
       ? options.massAssign
       : {};
@@ -498,6 +540,14 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
       if (!result.detected) {
         return next();
       }
+      req.__arcis = {
+        vector: 'mass-assignment',
+        rule: 'mass-assignment/sensitive-field',
+        severity: 'high',
+        reason: 'Sensitive mass-assignment field detected',
+        decision: dryRun ? 'would_deny' : 'deny',
+      };
+      if (dryRun) return next();
       res.status(403).json({
         error: 'Request blocked for security reasons',
         code: 'SECURITY_THREAT',
@@ -508,8 +558,9 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
   }
 
   // SSRF body-URL validation (v1.7 W5). Walk the JSON body for URL-shaped
-  // strings and validate each. Skipped in dry-run.
-  if (options.ssrf !== false && !dryRun) {
+  // strings and validate each. Dry-run records a finding without replacing
+  // the URL or writing a response.
+  if (options.ssrf !== false) {
     const ssrfOpts: ValidateUrlOptions = typeof options.ssrf === 'object'
       ? options.ssrf
       : {};
@@ -518,6 +569,14 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
       if (!result.detected) {
         return next();
       }
+      req.__arcis = {
+        vector: 'ssrf',
+        rule: 'ssrf/blocked-url',
+        severity: 'high',
+        reason: 'Blocked URL detected in request body',
+        decision: dryRun ? 'would_deny' : 'deny',
+      };
+      if (dryRun) return next();
       res.status(403).json({
         error: 'Request blocked for security reasons',
         code: 'SECURITY_THREAT',
@@ -529,33 +588,52 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
 
   // Prompt-injection detection on body strings (v1.7 W6). Walk the JSON
   // body for string values and run the prompt-injection detector; block
-  // when a match at or above the configured severity is found. Skipped
-  // in dry-run.
-  if (options.promptInjection !== false && !dryRun) {
+  // when a match at or above the configured severity is found. Dry-run
+  // reports the same match without changing the original prompt.
+  if (options.promptInjection !== false) {
     const piRank: Record<string, number> = { none: 0, low: 1, medium: 2, high: 3 };
     const minSeverity: PromptInjectionSeverity =
       typeof options.promptInjection === 'object' && options.promptInjection.minSeverity
         ? options.promptInjection.minSeverity
         : 'medium';
     const minRank = piRank[minSeverity];
-    const scanPromptInjection = (value: unknown, depth: number): boolean => {
-      if (depth > 8 || value === null) return false;
+    const scanPromptInjection = (
+      value: unknown,
+      depth: number,
+    ): PromptInjectionSeverity | undefined => {
+      if (depth > 8 || value === null) return undefined;
       if (typeof value === 'string') {
         const r = detectPromptInjection(value);
-        return r.detected && piRank[r.severity] >= minRank;
+        return r.detected && r.severity !== 'none' && piRank[r.severity] >= minRank
+          ? r.severity
+          : undefined;
       }
-      if (typeof value !== 'object') return false;
-      if (Array.isArray(value)) {
-        return value.some((v) => scanPromptInjection(v, depth + 1));
+      if (typeof value !== 'object') return undefined;
+      let highest: PromptInjectionSeverity | undefined;
+      const children = Array.isArray(value)
+        ? value
+        : Object.values(value as Record<string, unknown>);
+      for (const child of children) {
+        const severity = scanPromptInjection(child, depth + 1);
+        if (severity && (!highest || piRank[severity] > piRank[highest])) {
+          highest = severity;
+        }
       }
-      return Object.values(value as Record<string, unknown>).some((v) =>
-        scanPromptInjection(v, depth + 1),
-      );
+      return highest;
     };
     middlewares.push((req, res, next) => {
-      if (!scanPromptInjection(req.body, 0)) {
+      const severity = scanPromptInjection(req.body, 0);
+      if (!severity) {
         return next();
       }
+      req.__arcis = {
+        vector: 'prompt-injection',
+        rule: 'prompt-injection/detected',
+        severity,
+        reason: 'Prompt injection detected in request body',
+        decision: dryRun ? 'would_deny' : 'deny',
+      };
+      if (dryRun) return next();
       res.status(403).json({
         error: 'Request blocked for security reasons',
         code: 'SECURITY_THREAT',
@@ -565,19 +643,19 @@ export function arcis(options: ArcisOptions = {}): ArcisMiddlewareStack {
     });
   }
 
-  // Input sanitization — wrap with telemetry tap so SecurityThreatError
+  // Input sanitization. Dry-run uses the observer above and never installs
+  // the transforming sanitizer, so request data remains byte-for-byte owned
+  // by the application.
+  // Wrap enforcement with telemetry tap so SecurityThreatError
   // populates req.__arcis with vector/rule/severity for the emitter.
-  // Dry-run forces block: false so the sanitizer can never short-circuit
-  // with a 403; detection still happens via the observer above.
-  if (options.sanitize !== false) {
+  // Dry-run omits this middleware entirely; detection still happens via
+  // the immutable observer above.
+  if (options.sanitize !== false && !dryRun) {
     const sanitizeOpts: SanitizeOptions = typeof options.sanitize === 'object'
       ? { ...options.sanitize }
       : {};
     if (options.block && sanitizeOpts.block === undefined) {
       sanitizeOpts.block = true;
-    }
-    if (dryRun) {
-      sanitizeOpts.block = false;
     }
     const sanitizer = createSanitizer(sanitizeOpts);
     middlewares.push(telemetryClient ? tapSanitizerThreats(sanitizer) : sanitizer);
