@@ -47,6 +47,7 @@ _MAX_BATCH_SIZE = 500
 _DEFAULT_FLUSH_INTERVAL_MS = 5000
 _MIN_FLUSH_INTERVAL_MS = 500
 _FLUSH_TIMEOUT_S = 10.0
+_CLOSE_TIMEOUT_S = 2.0
 
 
 class TelemetryHttpError(Exception):
@@ -246,13 +247,18 @@ class TelemetryClient:
             return
         self._closed.set()
         self._wakeup.set()
-        # Best-effort: give the worker up to 2s to exit cleanly.
-        self._worker.join(timeout=2.0)
-        # Final drain on the calling thread in case the worker missed events.
-        try:
-            self.flush()
-        except Exception:
-            pass
+        # Keep application shutdown bounded even if a custom or broken
+        # transport ignores its network timeout. Never run a final send on
+        # the caller thread.
+        self._worker.join(timeout=_CLOSE_TIMEOUT_S)
+        if not self._worker.is_alive() and not self._queue.empty():
+            final_flush = threading.Thread(
+                target=self.flush,
+                name="arcis-telemetry-final-flush",
+                daemon=True,
+            )
+            final_flush.start()
+            final_flush.join(timeout=_CLOSE_TIMEOUT_S)
 
     @property
     def pending_count(self) -> int:
@@ -405,11 +411,13 @@ class AsyncTelemetryClient:
         self._wakeup.set()
         if self._task is not None:
             try:
-                await asyncio.wait_for(self._task, timeout=2.0)
+                await asyncio.wait_for(self._task, timeout=_CLOSE_TIMEOUT_S)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._task.cancel()
         try:
-            await self.flush()
+            await asyncio.wait_for(self.flush(), timeout=_CLOSE_TIMEOUT_S)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
         except Exception:
             pass
 

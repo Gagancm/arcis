@@ -8,9 +8,35 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { Request } from 'express';
 import { arcis } from '../../src/middleware/main';
 import type { SanitizeEvent } from '../../src/core/types';
 import { createTestServer, TestServer } from '../setup';
+
+interface DryRunInputFixture {
+  name: string;
+  request: {
+    path_param: string;
+    query: Record<string, string>;
+    headers: Record<string, string>;
+    cookies: Record<string, string>;
+    body_raw: string;
+  };
+  expected_request_unchanged: boolean;
+}
+
+interface FixtureRequest extends Request {
+  __rawFixtureBody?: Buffer;
+}
+
+const vectorsPath = resolve(__dirname, '..', '..', '..', '..', 'spec', 'TEST_VECTORS.json');
+const dryRunInputFixtures = (
+  JSON.parse(readFileSync(vectorsPath, 'utf8')) as {
+    dry_run_input_preservation: { cases: DryRunInputFixture[] };
+  }
+).dry_run_input_preservation.cases;
 
 describe('arcis() — onSanitize callback (issue #47)', () => {
   let testServer: TestServer;
@@ -182,12 +208,31 @@ describe('arcis() — dry-run mode (issue #47)', () => {
     await testServer.close();
   });
 
-  it('does NOT strip XSS from request body in dryRun mode (block: false default)', async () => {
-    // With dry-run, the sanitizer is forced to block: false. But the
-    // sanitizer's strip path still runs by default — to truly preserve
-    // the original input, the user would also need to pass
-    // sanitize: false. dry-run's promise is "don't reject"; the strip
-    // behavior remains opt-out via existing options.
+  it('marks a suppressed rate limit as would_deny', async () => {
+    testServer = await createTestServer((app) => {
+      app.use(arcis({ rateLimit: { max: 1, windowMs: 60_000 }, dryRun: true }));
+      app.get('/', (req, res) => res.json({
+        reached: true,
+        decision: req.__arcis?.decision,
+        vector: req.__arcis?.vector,
+      }));
+    });
+
+    await fetch(`${testServer.url}/`);
+    const res = await fetch(`${testServer.url}/`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      reached: true,
+      decision: 'would_deny',
+      vector: 'rate-limit',
+    });
+
+    await testServer.close();
+  });
+
+  it('does NOT strip XSS from request body in dryRun mode', async () => {
+    // Dry-run evaluates the immutable observer path. It must not require a
+    // separate sanitize:false escape hatch to preserve the request.
     const events: SanitizeEvent[] = [];
     testServer = await createTestServer((app) => {
       const express = require('express');
@@ -195,7 +240,6 @@ describe('arcis() — dry-run mode (issue #47)', () => {
       app.use(
         arcis({
           rateLimit: false,
-          sanitize: false, // user-asserted "no mutation" path
           block: true,
           dryRun: true,
           onSanitize: (e) => events.push(e),
@@ -211,30 +255,89 @@ describe('arcis() — dry-run mode (issue #47)', () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { q: string };
-    // sanitize: false → input preserved verbatim. Observer still fired.
-    expect(body.q).toContain('<script>');
+    expect(body.q).toBe('<script>alert(1)</script>');
     expect(events.some((e) => e.type === 'xss')).toBe(true);
 
     await testServer.close();
   });
 
-  it('forces sanitizer block: false even when caller passed block: true', async () => {
-    // Regression pin: a future refactor that drops the dryRun → block:
-    // false override would silently re-enable blocking under dry-run.
+  it('does not transform benign business data while observing threats', async () => {
     testServer = await createTestServer((app) => {
       const express = require('express');
       app.use(express.json());
       app.use(arcis({ rateLimit: false, block: true, dryRun: true }));
-      app.post('/api', (_req, res) => res.json({ reached: true }));
+      app.post('/api', (req, res) => res.json(req.body));
     });
 
     const res = await fetch(`${testServer.url}/api`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: '<script>alert(1)</script>' }),
+      body: JSON.stringify({
+        note: 'Use the -- flag; it works',
+        path: 'docs/../README.md',
+      }),
     });
     expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      note: 'Use the -- flag; it works',
+      path: 'docs/../README.md',
+    });
 
     await testServer.close();
   });
+
+  it.each(dryRunInputFixtures)(
+    'preserves shared fixture $name across every Express request surface',
+    async (fixture) => {
+      expect(fixture.expected_request_unchanged).toBe(true);
+      testServer = await createTestServer((app) => {
+        app.use(arcis({ rateLimit: false, block: true, dryRun: true }));
+        app.post('/preserve/:fixtureId', (req, res) => {
+          const fixtureRequest = req as FixtureRequest;
+          res.json({
+            rawBody: fixtureRequest.__rawFixtureBody?.toString('utf8'),
+            parsedBody: req.body,
+            query: req.query,
+            params: req.params,
+            fixtureHeader: req.headers['x-arcis-fixture'],
+            cookieHeader: req.headers.cookie,
+          });
+        });
+      }, {
+        json: {
+          verify: (req: FixtureRequest, _res: unknown, body: Buffer) => {
+            req.__rawFixtureBody = Buffer.from(body);
+          },
+        },
+      });
+
+      const query = new URLSearchParams(fixture.request.query).toString();
+      const fixtureHeader = fixture.request.headers['x-arcis-fixture'];
+      const cookieValue = fixture.request.cookies.arcis_note;
+      const res = await fetch(
+        `${testServer.url}/preserve/${encodeURIComponent(fixture.request.path_param)}?${query}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-arcis-fixture': fixtureHeader,
+            cookie: `arcis_note=${cookieValue}`,
+          },
+          body: fixture.request.body_raw,
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        rawBody: fixture.request.body_raw,
+        parsedBody: JSON.parse(fixture.request.body_raw),
+        query: fixture.request.query,
+        params: { fixtureId: fixture.request.path_param },
+        fixtureHeader,
+        cookieHeader: `arcis_note=${cookieValue}`,
+      });
+
+      await testServer.close();
+    },
+  );
 });

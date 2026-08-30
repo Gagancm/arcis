@@ -61,23 +61,30 @@ _LOOPBACK_HEADER = _re.compile(
 )
 
 
-def _scan_prompt_injection(body: Any, min_severity: str, depth: int = 0) -> bool:
+def _scan_prompt_injection(
+    body: Any, min_severity: str, depth: int = 0
+) -> Optional[str]:
     """Recursively scan body string values for prompt-injection signatures.
 
-    Returns True if any string matches at or above ``min_severity``.
+    Returns the highest matching severity at or above ``min_severity``.
     v1.7 W6 wire-up helper.
     """
     if depth > 8:
-        return False
+        return None
     min_rank = _PROMPT_SEVERITY_RANK.get(min_severity, 2)
     if isinstance(body, str):
         result = detect_prompt_injection(body)
-        return result.detected and _PROMPT_SEVERITY_RANK.get(str(result.severity), 0) >= min_rank
-    if isinstance(body, dict):
-        return any(_scan_prompt_injection(v, min_severity, depth + 1) for v in body.values())
-    if isinstance(body, list):
-        return any(_scan_prompt_injection(v, min_severity, depth + 1) for v in body)
-    return False
+        severity = str(result.severity)
+        if result.detected and _PROMPT_SEVERITY_RANK.get(severity, 0) >= min_rank:
+            return severity
+        return None
+    children = body.values() if isinstance(body, dict) else body if isinstance(body, list) else []
+    matches = [
+        severity
+        for child in children
+        if (severity := _scan_prompt_injection(child, min_severity, depth + 1))
+    ]
+    return max(matches, key=lambda value: _PROMPT_SEVERITY_RANK[value]) if matches else None
 
 
 def _intelligence_from_env() -> Optional[IntelligenceOptions]:
@@ -191,13 +198,10 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         # patterns and return 403 (with telemetry attribution) instead of
         # silently sanitizing. Opt-in for backwards compatibility.
         block: bool = False,
-        # Dry-run mode: when True, run the full block-mode detection
-        # pipeline but do NOT return 403. The threat is logged + the
-        # on_sanitize callback fires + the marker is set (so telemetry
-        # records would-have-blocked decisions). Use for safe rollout:
-        # turn on `block=True + dry_run=True`, watch the marker stream
-        # for false positives, then flip dry_run=False once confident.
-        # Ignored when block=False.
+        # Dry-run mode: when True, configured enforcement and detection still
+        # evaluate, but Arcis does not return an Arcis 4xx response or mutate
+        # request input. It takes precedence over block/reject/transform
+        # behavior. Observe `would_deny` telemetry before disabling dry-run.
         dry_run: bool = False,
         # Per-request callback fired when sanitization modifies input or
         # the block path matches a threat. Receives a dict with keys:
@@ -508,6 +512,30 @@ class ArcisMiddleware(BaseHTTPMiddleware):
             except Exception:
                 pass
 
+    def _mark_would_deny(
+        self,
+        request: Request,
+        *,
+        vector: str,
+        rule: str,
+        severity: str,
+        reason: str,
+    ) -> None:
+        """Attach an observed enforcement decision when telemetry is active."""
+        if self._telemetry_client is None:
+            return
+        marker: Optional[ArcisTelemetryMarker] = getattr(
+            request.state, ARCIS_MARKER_ATTR, None
+        )
+        if marker is None:
+            marker = ArcisTelemetryMarker()
+            setattr(request.state, ARCIS_MARKER_ATTR, marker)
+        marker.vector = vector
+        marker.rule = rule
+        marker.severity = severity  # type: ignore[assignment]
+        marker.reason = reason
+        marker.decision = "would_deny"
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Telemetry: start latency clock + give inner middleware a place to
         # write attribution. The marker is only created when telemetry is
@@ -522,11 +550,21 @@ class ArcisMiddleware(BaseHTTPMiddleware):
 
         # Forwarded-header inspection (v1.7 W7). Loopback in a forwarded /
         # client-IP header is a spoof; optional trusted-host allowlist on
-        # Host / X-Forwarded-Host. Runs first (header-only). Skipped in dry-run.
-        if self.forwarded_headers_enabled and not self.dry_run:
+        # Host / X-Forwarded-Host. Runs first because it only reads headers.
+        # Dry-run records the finding without changing the header or response.
+        if self.forwarded_headers_enabled:
             for hname in _FORWARDED_HEADERS:
                 hval = request.headers.get(hname)
                 if hval and _LOOPBACK_HEADER.search(hval):
+                    if self.dry_run:
+                        self._mark_would_deny(
+                            request,
+                            vector="header",
+                            rule="header/forwarded-loopback-spoof",
+                            severity="high",
+                            reason=f"Loopback address detected in {hname}",
+                        )
+                        break
                     response = JSONResponse(
                         content={
                             "error": "Request blocked for security reasons",
@@ -544,6 +582,15 @@ class ArcisMiddleware(BaseHTTPMiddleware):
                     if hval:
                         host = hval.split(":")[0].lower()
                         if host not in self.trusted_hosts:
+                            if self.dry_run:
+                                self._mark_would_deny(
+                                    request,
+                                    vector="header",
+                                    rule="header/untrusted-host",
+                                    severity="high",
+                                    reason=f"Untrusted host detected in {hname}",
+                                )
+                                break
                             response = JSONResponse(
                                 content={
                                     "error": "Request blocked for security reasons",
@@ -564,14 +611,24 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         if self._intel_client is not None and self._intel_ip_rep:
             rep = self._intel_client.check(detect_client_ip(request))
             request.state.arcis_ip_reputation = rep
-            should_block = (
-                not self.dry_run
-                and rep.found
+            would_block = (
+                rep.found
                 and self._intel_block_threshold is not None
                 and (rep.severity or 0) >= self._intel_block_threshold
             )
-            if should_block:
-                if self._telemetry_client is not None:
+            if would_block:
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="ip-reputation",
+                        rule="ip-reputation/known-bad",
+                        severity=reputation_severity_tier(rep.severity),
+                        reason=(
+                            f"IP reputation severity {rep.severity} "
+                            f">= {self._intel_block_threshold}"
+                        ),
+                    )
+                else:
                     marker = getattr(request.state, ARCIS_MARKER_ATTR, None)
                     if marker is None:
                         marker = ArcisTelemetryMarker()
@@ -584,52 +641,71 @@ class ArcisMiddleware(BaseHTTPMiddleware):
                         f">= {self._intel_block_threshold}"
                     )
                     marker.decision = "deny"
-                response = JSONResponse(
-                    content={
-                        "error": "Request blocked for security reasons",
-                        "code": "SECURITY_THREAT",
-                        "vector": "ip-reputation",
-                        "rule": "ip-reputation/known-bad",
-                    },
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                    response = JSONResponse(
+                        content={
+                            "error": "Request blocked for security reasons",
+                            "code": "SECURITY_THREAT",
+                            "vector": "ip-reputation",
+                            "rule": "ip-reputation/known-bad",
+                        },
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # Scanner-path probe blocking (v1.7 W2). Runs BEFORE bot detection
         # because some scanner UAs forge a browser UA but still hit dotfile /
-        # WordPress probe paths. Dry-run skips the block.
-        if self.scanner_paths_enabled and not self.dry_run:
+        # WordPress probe paths. Dry-run records the match without blocking.
+        if self.scanner_paths_enabled:
             matched = detect_sensitive_path(
                 request.url.path,
                 self.scanner_path_patterns,
             )
             if matched is not None:
-                response = JSONResponse(
-                    content={
-                        "error": "Access denied.",
-                        "code": "SECURITY_THREAT",
-                        "vector": "scanner-path",
-                    },
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="scanner-path",
+                        rule="scanner-path/sensitive",
+                        severity="medium",
+                        reason="Sensitive scanner path detected",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={
+                            "error": "Access denied.",
+                            "code": "SECURITY_THREAT",
+                            "vector": "scanner-path",
+                        },
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # Bot UA classification (v1.7 W1). Runs BEFORE rate-limit so bots
-        # don't consume legitimate-traffic quota. Dry-run skips the deny
-        # path: detection still runs and the marker is tagged via the
-        # BotProtection.check() telemetry hook, but the request continues.
-        if self.bot_guard is not None and not self.dry_run:
+        # don't consume legitimate-traffic quota. Dry-run records the
+        # would-have-denied result but continues to the application.
+        if self.bot_guard is not None:
             try:
                 self.bot_guard.check(request)
             except BotDenied as e:
-                response = JSONResponse(
-                    content={"error": e.message},
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    category = getattr(e.result, "category", "unknown").lower()
+                    name = getattr(e.result, "name", None)
+                    self._mark_would_deny(
+                        request,
+                        vector="bot",
+                        rule=f"bot/{category}",
+                        severity="medium",
+                        reason=f"Bot detected: {name}" if name else "Bot detected",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={"error": e.message},
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # Rate limiting (async or sync)
         rate_limit_info = None
@@ -638,24 +714,42 @@ class ArcisMiddleware(BaseHTTPMiddleware):
             try:
                 rate_limit_info = await self.async_rate_limiter.check(request)
             except AsyncRateLimitExceeded as e:
-                response = JSONResponse(
-                    content={"error": e.message, "retry_after": e.retry_after},
-                    status_code=429,
-                )
-                response.headers["Retry-After"] = str(e.retry_after)
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="rate-limit",
+                        rule="rate-limit/exceeded",
+                        severity="medium",
+                        reason="Rate limit would have been exceeded in dry-run mode",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={"error": e.message, "retry_after": e.retry_after},
+                        status_code=429,
+                    )
+                    response.headers["Retry-After"] = str(e.retry_after)
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
         elif self.rate_limiter:
             try:
                 rate_limit_info = self.rate_limiter.check(request)
             except RateLimitExceeded as e:
-                response = JSONResponse(
-                    content={"error": e.message, "retry_after": e.retry_after},
-                    status_code=429,
-                )
-                response.headers["Retry-After"] = str(e.retry_after)
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="rate-limit",
+                        rule="rate-limit/exceeded",
+                        severity="medium",
+                        reason="Rate limit would have been exceeded in dry-run mode",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={"error": e.message, "retry_after": e.retry_after},
+                        status_code=429,
+                    )
+                    response.headers["Retry-After"] = str(e.retry_after)
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
         
         # Read JSON body once (used by GraphQL inspection, block scan, and
         # sanitizer below). v1.7 W3 added graphql_enabled as a body-needing
@@ -665,10 +759,10 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         if (
             self.block
             or self.sanitizer
-            or (self.graphql_enabled and not self.dry_run)
-            or (self.mass_assign_enabled and not self.dry_run)
-            or (self.ssrf_enabled and not self.dry_run)
-            or (self.prompt_injection_enabled and not self.dry_run)
+            or self.graphql_enabled
+            or self.mass_assign_enabled
+            or self.ssrf_enabled
+            or self.prompt_injection_enabled
         ):
             content_type = request.headers.get("content-type", "")
             if "application/json" in content_type:
@@ -676,10 +770,12 @@ class ArcisMiddleware(BaseHTTPMiddleware):
                     body = await request.json()
                     body_read = True
                 except json.JSONDecodeError as e:
-                    return JSONResponse(
-                        content={"error": "Invalid JSON in request body", "detail": str(e)},
-                        status_code=400,
-                    )
+                    if not self.dry_run:
+                        return JSONResponse(
+                            content={"error": "Invalid JSON in request body", "detail": str(e)},
+                            status_code=400,
+                        )
+                    body = None
                 except Exception:
                     body = None
             elif "application/xml" in content_type or "text/xml" in content_type:
@@ -724,89 +820,122 @@ class ArcisMiddleware(BaseHTTPMiddleware):
         # / fragment-cycle inspector. Skipped in dry-run.
         if (
             self.graphql_enabled
-            and not self.dry_run
             and isinstance(body, dict)
             and isinstance(body.get("query"), str)
             and body["query"]
         ):
             gql_result = inspect_graphql_query(body["query"], self.graphql_options)
             if gql_result.blocked:
-                response = JSONResponse(
-                    content={
-                        "error": "Request blocked for security reasons",
-                        "code": "SECURITY_THREAT",
-                        "vector": "graphql",
-                        "rule": f"graphql/{gql_result.reason}",
-                    },
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="graphql",
+                        rule=f"graphql/{gql_result.reason}",
+                        severity="high",
+                        reason=str(gql_result.reason),
+                    )
+                else:
+                    response = JSONResponse(
+                        content={
+                            "error": "Request blocked for security reasons",
+                            "code": "SECURITY_THREAT",
+                            "vector": "graphql",
+                            "rule": f"graphql/{gql_result.reason}",
+                        },
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # Mass-assignment field detection (v1.7 W4). Scan the parsed body
         # for privilege-escalation field names. Skipped in dry-run.
         if (
             self.mass_assign_enabled
-            and not self.dry_run
             and body is not None
         ):
             ma_result = detect_mass_assignment(
                 body, sensitive_fields=self.mass_assign_fields
             )
             if ma_result.detected:
-                response = JSONResponse(
-                    content={
-                        "error": "Request blocked for security reasons",
-                        "code": "SECURITY_THREAT",
-                        "vector": "mass-assignment",
-                        "rule": "mass-assignment/sensitive-field",
-                    },
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="mass-assignment",
+                        rule="mass-assignment/sensitive-field",
+                        severity="high",
+                        reason="Sensitive mass-assignment field detected",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={
+                            "error": "Request blocked for security reasons",
+                            "code": "SECURITY_THREAT",
+                            "vector": "mass-assignment",
+                            "rule": "mass-assignment/sensitive-field",
+                        },
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # SSRF body-URL validation (v1.7 W5). Walk the parsed body for
         # URL-shaped strings and validate each. Skipped in dry-run.
         if (
             self.ssrf_enabled
-            and not self.dry_run
             and body is not None
         ):
             ssrf_result = scan_for_ssrf(body, self.ssrf_options)
             if ssrf_result.detected:
-                response = JSONResponse(
-                    content={
-                        "error": "Request blocked for security reasons",
-                        "code": "SECURITY_THREAT",
-                        "vector": "ssrf",
-                        "rule": "ssrf/blocked-url",
-                    },
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="ssrf",
+                        rule="ssrf/blocked-url",
+                        severity="high",
+                        reason="Blocked URL detected in request body",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={
+                            "error": "Request blocked for security reasons",
+                            "code": "SECURITY_THREAT",
+                            "vector": "ssrf",
+                            "rule": "ssrf/blocked-url",
+                        },
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # Prompt-injection detection on body strings (v1.7 W6). Walk the
         # parsed body for string values and run the detector; block at or
         # above min_prompt_severity. Skipped in dry-run.
         if (
             self.prompt_injection_enabled
-            and not self.dry_run
             and body is not None
         ):
-            if _scan_prompt_injection(body, self.min_prompt_severity):
-                response = JSONResponse(
-                    content={
-                        "error": "Request blocked for security reasons",
-                        "code": "SECURITY_THREAT",
-                        "vector": "prompt-injection",
-                        "rule": "prompt-injection/detected",
-                    },
-                    status_code=403,
-                )
-                self._maybe_record(request, response, telemetry_start)
-                return response
+            prompt_severity = _scan_prompt_injection(body, self.min_prompt_severity)
+            if prompt_severity:
+                if self.dry_run:
+                    self._mark_would_deny(
+                        request,
+                        vector="prompt-injection",
+                        rule="prompt-injection/detected",
+                        severity=prompt_severity,
+                        reason="Prompt injection detected in request body",
+                    )
+                else:
+                    response = JSONResponse(
+                        content={
+                            "error": "Request blocked for security reasons",
+                            "code": "SECURITY_THREAT",
+                            "vector": "prompt-injection",
+                            "rule": "prompt-injection/detected",
+                        },
+                        status_code=403,
+                    )
+                    self._maybe_record(request, response, telemetry_start)
+                    return response
 
         # Block mode: scan body + query params for attack patterns. On match,
         # write the telemetry marker (so the dashboard records vector/rule)
@@ -881,7 +1010,7 @@ class ArcisMiddleware(BaseHTTPMiddleware):
                     return response
 
         # Store sanitized body in request state if JSON
-        if self.sanitizer and body_read and body is not None:
+        if self.sanitizer and not self.dry_run and body_read and body is not None:
             try:
                 request.state.sanitized_body = self.sanitizer(body)
                 request.state.json = request.state.sanitized_body

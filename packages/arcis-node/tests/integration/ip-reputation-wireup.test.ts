@@ -9,9 +9,10 @@
  * An unreachable service fails open. Omitting cloudDecisions makes it inert.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Request, Response, Express } from 'express';
 import arcis from '../../src/index';
+import type { TelemetryEvent } from '../../src/telemetry/types';
 import { createTestServer, TestServer } from '../setup';
 
 const PUBLIC_IP = '203.0.113.50';
@@ -262,5 +263,60 @@ describe('Integration: IP reputation wire-up (Phase C)', () => {
       const got403 = await pollUntilStatus(server.url, 403, 6);
       expect(got403).toBe(false);
     });
+  });
+
+  it('emits would_deny for a cached bad IP while dry-run stays non-blocking', async () => {
+    const received: TelemetryEvent[] = [];
+    const intel = await createIntelStub({ [PUBLIC_IP]: { severity: 10 } });
+    const ingest = await createTestServer((app) => {
+      app.post('/v1/events', (req: Request, res: Response) => {
+        const body = req.body as { events?: TelemetryEvent[] };
+        received.push(...(body.events ?? []));
+        res.json({ inserted: body.events?.length ?? 0 });
+      });
+    });
+    const stack = arcis({
+      dryRun: true,
+      rateLimit: false,
+      intelligence: {
+        endpoint: intel.url,
+        cloudDecisions: ['ip-rep'],
+        blockThreshold: 1,
+      },
+      telemetry: {
+        endpoint: `${ingest.url}/v1/events`,
+        batchSize: 1,
+        flushIntervalMs: 500,
+      },
+    });
+    const server = await createTestServer((app: Express) => {
+      app.set('trust proxy', true);
+      app.use(...stack);
+      app.get('/', (_req: Request, res: Response) => res.json({ reached: true }));
+    });
+
+    try {
+      for (let i = 0; i < 20; i++) {
+        const res = await fetch(server.url + '/', {
+          headers: { 'x-forwarded-for': PUBLIC_IP, 'user-agent': 'Mozilla/5.0' },
+        });
+        expect(res.status).toBe(200);
+        if (received.some((event) => event.vector === 'ip-reputation')) break;
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
+
+      await vi.waitFor(() => {
+        expect(received.find((event) => event.vector === 'ip-reputation')).toMatchObject({
+          decision: 'would_deny',
+          rule: 'ip-reputation/known-bad',
+          status: 200,
+        });
+      });
+    } finally {
+      stack.close();
+      await server.close();
+      await ingest.close();
+      await intel.close();
+    }
   });
 });

@@ -97,13 +97,30 @@ import 'dotenv/config';
 
 const app = express();
 
-// block: true returns 403 on detected attacks. Defaults to false
-// (sanitize + observe) so existing apps don't break on rollout.
+// block: true returns 403 on detected attacks. It defaults to false.
+// Use dryRun for a non-mutating, non-blocking production rollout.
 app.use(arcis({ block: true }));
 
 app.listen(3000);
 // That's it. Sanitization, rate limiting, and security headers are on.
 ```
+
+### Safe dry-run rollout
+
+```js
+app.use(arcis({
+  block: true,
+  dryRun: true,
+  telemetry: { endpoint: 'https://security.example.com/v1/events' },
+}));
+```
+
+`dryRun: true` takes precedence over block, reject, and transform behavior in
+the Arcis bundle. Arcis continues evaluating configured detectors and rate
+limits, but it does not return an Arcis `403` or `429` and does not rewrite the
+request body, query, route params, headers, or cookies. A request that would
+have been rejected is emitted as telemetry decision `would_deny` with the
+application's response status. Response security headers may still be added.
 
 ### With any framework (Fastify, Koa, Hono, etc.)
 

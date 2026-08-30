@@ -264,6 +264,7 @@ class ArcisMiddleware:
                 "matched": matched,
                 "path": path,
                 "dry_run": self.dry_run,
+                "decision": "would_deny" if self.dry_run else "deny",
             })
         except Exception:
             logger.exception("on_sanitize callback raised")
@@ -284,14 +285,26 @@ class ArcisMiddleware:
             try:
                 self._rate_limiter.check(ip)
             except RateLimitExceeded as exc:
-                start, body = _json_response(
-                    429,
-                    {"error": exc.message, "retry_after": exc.retry_after},
-                    extra_headers=[(b"retry-after", str(exc.retry_after).encode())],
-                )
-                await send(start)
-                await send(body)
-                return
+                if self.dry_run:
+                    self._fire_on_sanitize(
+                        "rate-limit",
+                        "rate-limit/exceeded",
+                        str(ip),
+                        scope.get("path", "") or "",
+                    )
+                    logger.info(
+                        "arcis dry-run: would rate limit path=%s",
+                        scope.get("path", "") or "",
+                    )
+                else:
+                    start, body = _json_response(
+                        429,
+                        {"error": exc.message, "retry_after": exc.retry_after},
+                        extra_headers=[(b"retry-after", str(exc.retry_after).encode())],
+                    )
+                    await send(start)
+                    await send(body)
+                    return
 
         # 2. Bot detection. Defer the import so consumers without the
         #    bot corpus loaded at startup don't pay it.
@@ -302,10 +315,22 @@ class ArcisMiddleware:
             if getattr(result, "is_bot", False):
                 category = getattr(result, "category", "UNKNOWN")
                 if category in self._bot_deny or category not in self._bot_allow:
-                    start, body = _json_response(403, {"error": "Access denied."})
-                    await send(start)
-                    await send(body)
-                    return
+                    if self.dry_run:
+                        self._fire_on_sanitize(
+                            "bot",
+                            f"bot/{str(category).lower()}",
+                            getattr(result, "name", None) or str(category),
+                            scope.get("path", "") or "",
+                        )
+                        logger.info(
+                            "arcis dry-run: would deny bot path=%s",
+                            scope.get("path", "") or "",
+                        )
+                    else:
+                        start, body = _json_response(403, {"error": "Access denied."})
+                        await send(start)
+                        await send(body)
+                        return
 
         # 3. Body/query/path scan + (optionally) sanitise. Read the
         #    body once; the inner app gets a wrapped receive that
@@ -324,12 +349,13 @@ class ArcisMiddleware:
                     try:
                         body_obj = json.loads(raw_body.decode("utf-8"))
                     except json.JSONDecodeError:
-                        start, body = _json_response(
-                            400, {"error": "Invalid JSON in request body"}
-                        )
-                        await send(start)
-                        await send(body)
-                        return
+                        if not self.dry_run:
+                            start, body = _json_response(
+                                400, {"error": "Invalid JSON in request body"}
+                            )
+                            await send(start)
+                            await send(body)
+                            return
 
                 if self.block:
                     threat = None
@@ -365,7 +391,11 @@ class ArcisMiddleware:
                             await send(body)
                             return
 
-                if self._sanitizer is not None and isinstance(body_obj, dict):
+                if (
+                    self._sanitizer is not None
+                    and not self.dry_run
+                    and isinstance(body_obj, dict)
+                ):
                     sanitised = self._sanitizer.sanitize_dict(body_obj)
                     new_body = json.dumps(sanitised).encode("utf-8")
                     # Rewrite the buffered request so the inner app

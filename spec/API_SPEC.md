@@ -242,8 +242,25 @@ ArcisOptions {
   sanitize?: boolean | SanitizeOptions  // Default: true
   rateLimit?: boolean | RateLimitOptions  // Default: true
   headers?: boolean | HeaderOptions  // Default: true
+  block?: boolean                       // Default: false
+  dryRun?: boolean                      // Default: false
+  onSanitize?: (event: SanitizeEvent) => void
 }
 ```
+
+**Dry-run contract:**
+
+- `dryRun=true` overrides every Arcis enforcement and transformation path.
+- Precedence is `dryRun` first, then `block` or reject behavior, then transform
+  behavior. When `dryRun=true`, block/reject and transform outcomes are observed
+  only. When `dryRun=false`, the configured enforcement or transform mode applies.
+- Arcis MUST NOT return a deny, challenge, or rate-limit response in dry-run mode.
+- Arcis MUST NOT replace or rewrite request bodies, query values, route parameters,
+  headers, or framework-specific sanitized-body fields in dry-run mode.
+- Configured request detectors that support observation continue to evaluate
+  when their result can be reported through `onSanitize` or telemetry.
+- A request that would have been rejected is reported with telemetry decision
+  `"would_deny"` and the response status produced by the application.
 
 **Returns:** Array of middlewares in order:
 1. Security headers
@@ -347,7 +364,7 @@ CSS value context. Hex-encodes non-alphanumeric characters with CSS escape synta
 
 ### Purpose
 
-Stream decision events (block/allow/challenge) from the middleware to a user-owned control-plane endpoint. Telemetry is **opt-in** — if no endpoint is configured, the SDK emits nothing and has zero overhead.
+Stream decision events (`allow`, `deny`, `challenge`, `would_deny`) from the middleware to a user-owned control-plane endpoint. Telemetry is **opt-in** — if no endpoint is configured, the SDK emits nothing and has zero overhead.
 
 ### Configuration Options
 
@@ -370,7 +387,7 @@ TelemetryEvent {
   ip: string                // Client IP extracted by SDK (Required)
   method: string            // HTTP method: GET/POST/PUT/PATCH/DELETE (Required)
   path: string              // Request path, query string excluded (Required)
-  decision: "allow" | "deny" | "challenge"  // Final middleware decision (Required)
+  decision: "allow" | "deny" | "challenge" | "would_deny"  // Final or observed middleware decision (Required)
   vector?: string           // Attack family: "xss", "sql", "ssrf", etc. Optional for allowed requests.
   rule?: string             // Specific rule fired, e.g. "sql/union-select"
   severity?: "critical" | "high" | "medium" | "low"
@@ -425,6 +442,7 @@ The middleware SHOULD emit a `TelemetryEvent` after each of these decision point
 | Rate limiter | Over threshold but under block | `"challenge"` |
 | Sanitizer / validator | Pattern matched an attack | `"deny"` |
 | Sanitizer / validator | Input flagged but allowed through | `"challenge"` |
+| Any enforcement stage in dry-run mode | Would reject but request proceeds | `"would_deny"` |
 | Pass-through | No match, request proceeds | `"allow"` |
 
 Latency MUST be measured from the start of the Arcis middleware chain to the emit call, in milliseconds (fractional).

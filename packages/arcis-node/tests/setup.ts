@@ -65,12 +65,19 @@ export interface TestServer {
   close: () => Promise<void>;
 }
 
+export interface TestServerOptions {
+  json?: Parameters<typeof express.json>[0];
+}
+
 /**
  * Creates a test server with the provided route setup
  */
-export async function createTestServer(setupRoutes: (app: Express) => void): Promise<TestServer> {
+export async function createTestServer(
+  setupRoutes: (app: Express) => void,
+  options: TestServerOptions = {},
+): Promise<TestServer> {
   const app = express();
-  app.use(express.json());
+  app.use(express.json(options.json));
   app.use(express.urlencoded({ extended: true }));
   
   setupRoutes(app);

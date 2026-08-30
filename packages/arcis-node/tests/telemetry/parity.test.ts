@@ -24,6 +24,7 @@ interface ParityCase {
     repeat?: number;
   };
   compare_event_index?: number;
+  expected_request_unchanged?: boolean;
   expected_event: Partial<TelemetryEvent>;
 }
 
@@ -63,7 +64,7 @@ async function buildAppWithArcis(arcisConfig: Record<string, unknown>) {
   const app = express();
   app.use(express.json());
   app.use(...stack);
-  app.use((_req, res) => res.json({ ok: true }));
+  app.use((req, res) => res.json({ ok: true, body: req.body }));
   app.use((err: { statusCode?: number; message?: string }, _req: express.Request, res: express.Response, _n: express.NextFunction) => {
     res.status(err.statusCode ?? 500).json({ error: err.message ?? 'error' });
   });
@@ -98,12 +99,20 @@ describe('Phase 9: cross-SDK parity (middleware_emission)', () => {
       cleanups.push(app.close);
 
       const repeat = c.request.repeat ?? 1;
+      let lastResponseBody: { body?: Record<string, unknown> } | undefined;
       for (let i = 0; i < repeat; i++) {
-        await fetch(`${app.url}${c.request.path}`, {
+        const response = await fetch(`${app.url}${c.request.path}`, {
           method: c.request.method,
           headers: c.request.body ? { 'content-type': 'application/json' } : undefined,
           body: c.request.body ? JSON.stringify(c.request.body) : undefined,
         });
+        if (c.expected_request_unchanged) {
+          lastResponseBody = await response.json() as { body?: Record<string, unknown> };
+        }
+      }
+
+      if (c.expected_request_unchanged) {
+        expect(lastResponseBody?.body).toEqual(c.request.body);
       }
 
       const idx = c.compare_event_index ?? 0;

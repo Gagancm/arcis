@@ -3,7 +3,7 @@
  * Shape accepted by the Arcis dashboard server's POST /v1/events endpoint.
  */
 
-export type TelemetryDecision = 'allow' | 'deny' | 'challenge';
+export type TelemetryDecision = 'allow' | 'deny' | 'challenge' | 'would_deny';
 
 export type TelemetrySeverity = 'critical' | 'high' | 'medium' | 'low';
 

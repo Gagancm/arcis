@@ -108,3 +108,32 @@ def test_custom_patterns():
 def test_dry_run_does_not_block():
     client = _make_app(dry_run=True)
     assert client.get("/.env", headers=_BROWSER_HEADERS).status_code == 200
+
+
+def test_dry_run_records_scanner_path_as_would_deny():
+    from arcis.telemetry.client import AsyncTelemetryClient
+    from arcis.telemetry.types import TelemetryOptions
+
+    captured = []
+
+    class _Capture(AsyncTelemetryClient):
+        def record(self, event):  # type: ignore[override]
+            captured.append(event)
+
+    telemetry = _Capture(TelemetryOptions(endpoint="http://localhost:9999/v1/events"))
+    client = _make_app(
+        dry_run=True,
+        bot=False,
+        sanitize=False,
+        forwarded_headers=False,
+        telemetry=telemetry,
+    )
+
+    response = client.get("/.env", headers=_BROWSER_HEADERS)
+
+    assert response.status_code == 200
+    assert len(captured) == 1
+    assert captured[0].decision == "would_deny"
+    assert captured[0].vector == "scanner-path"
+    assert captured[0].rule == "scanner-path/sensitive"
+    assert captured[0].status == 200

@@ -160,7 +160,22 @@ export class ArcisGuard implements CanActivate {
           run(innerErr);
         };
         try {
-          handler(req, res, wrappedNext);
+          const outcome = handler(req, res, wrappedNext);
+          if (
+            outcome !== null &&
+            typeof outcome === 'object' &&
+            typeof (outcome as PromiseLike<unknown>).then === 'function'
+          ) {
+            void Promise.resolve(outcome).then(
+              () => {
+                // Promise-aware handlers such as an external-store rate
+                // limiter may finish a terminal response without calling
+                // next(). Resolve the guard instead of waiting forever.
+                if (!advanced) resolve(false);
+              },
+              (caught: unknown) => reject(caught as Error),
+            );
+          }
         } catch (caught) {
           reject(caught as Error);
           return;
